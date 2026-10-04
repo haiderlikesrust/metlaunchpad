@@ -1,0 +1,9 @@
+[toolchain]
+anchor_version = "0.32.1"
+
+[programs.localnet]
+thicc_vault = "EsfAQom4gUDumzUNCTzMHmsssdUBd1uBuLK1CynKZp24"
+
+[provider]
+cluster = "localnet"
+wallet = "~/.config/solana/id.json"

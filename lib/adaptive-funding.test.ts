@@ -1,0 +1,11 @@
+import test from "node:test";
+import assert from "node:assert/strict";
+import {hourlyUsage,planAdaptiveFunding,type CreditSample} from "./adaptive-funding";
+const now=1_800_000_000_000;
+const samples:CreditSample[]=[{at:now-3600000,usedMicros:10_000_000n,remainingMicros:6_000_000n},{at:now,usedMicros:12_000_000n,remainingMicros:4_000_000n}];
+const input={samples,now,availableEarnedComputeMicros:100_000_000n,pending:false,destinationVerified:true};
+test("replenishes forecast runway from hourly spend, without a daily dollar cap",()=>{const p=planAdaptiveFunding(input);assert.equal(p.action,"top_up");if(p.action==="top_up"){assert.equal(p.amountMicros,44_000_000n);assert.equal(p.hourlyUsageMicros,2_000_000n);}});
+test("credit purchases do not count as negative usage",()=>{assert.equal(hourlyUsage([samples[0],{...samples[1],remainingMicros:100_000_000n}],now),2_000_000n);});
+test("never spends LP principal and never duplicates a pending deposit",()=>{const p=planAdaptiveFunding({...input,availableEarnedComputeMicros:5_005_000n});if(p.action!=="top_up")assert.fail();assert.equal(p.amountMicros,5_000_000n);assert.equal(p.limitedByEarnedFees,true);assert.equal(planAdaptiveFunding({...input,pending:true}).action,"hold");assert.equal(planAdaptiveFunding({...input,availableEarnedComputeMicros:0n}).action,"hold");});
+test("missing hour, stale samples, counter resets, and unsafe forecasts hold",()=>{assert.equal(hourlyUsage([samples[1]],now),null);assert.equal(hourlyUsage(samples,now+120001),null);assert.equal(hourlyUsage([samples[0],{...samples[1],usedMicros:1n}],now),null);assert.equal(planAdaptiveFunding({...input,targetHours:Infinity}).action,"hold");assert.equal(planAdaptiveFunding({...input,targetHours:1000}).action,"hold");});
+test("AI forecast changes coverage without selecting the payment amount directly",()=>{const p=planAdaptiveFunding({...input,targetHours:48});if(p.action!=="top_up")assert.fail();assert.equal(p.amountMicros,92_000_000n);});
