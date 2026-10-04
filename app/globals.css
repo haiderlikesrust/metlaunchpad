@@ -48,3 +48,14 @@
 .trade-tabs { display:flex; gap:8px; margin-bottom:20px; background:var(--surface, #f4f5ed); padding:5px; border-radius:12px; }
 .trade-tabs button { flex:1; padding:12px; border-radius:9px; color:inherit; background:transparent; border:0; cursor:pointer; }
 .trade-tabs button.selected { background:#232b1f; color:#f2f6e8; }
+/* Anchors need their own flex layout; inline links split the button border. */
+.coin-graduation .pool-chain-link{display:flex;align-items:center;justify-content:center;gap:8px;min-height:44px;box-sizing:border-box;text-decoration:none;white-space:nowrap}
+.pool-chain-link svg{flex-shrink:0}
+.agent-fee-panel{margin-top:22px;border-top:1px solid var(--line);padding-top:20px}
+.activation-progress{padding:15px;border:1px solid #f3d5c0;border-radius:10px;background:#fff8f0}
+.activation-progress>div:first-child{display:flex;justify-content:space-between;align-items:center;gap:10px;font-size:12px}
+.activation-progress strong{display:flex;align-items:center;gap:5px}.activation-progress>div>span{color:#db794a;font-variant-numeric:tabular-nums}
+.activation-track{height:7px;overflow:hidden;background:#f1e6d9;border-radius:9px;margin:13px 0 10px}.activation-track>span{display:block;height:100%;background:#ff6c2f;border-radius:9px;transition:width .4s ease}
+.activation-progress p{font-size:12px;font-weight:600;font-variant-numeric:tabular-nums}.activation-progress small{display:block;color:#8a987c;font-size:10px;font-weight:400;margin-top:5px;line-height:1.6}.activation-progress.is-active{background:#f2f7ed;border-color:#d9e5d0}.is-active .activation-track>span{background:#79a26b}
+.fee-metrics>div{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:8px;padding:16px 0;border-bottom:1px solid var(--line)}.fee-metrics span{font-size:12px}.fee-metrics strong{font:600 18px 'Space Grotesk',sans-serif;font-variant-numeric:tabular-nums}.fee-metrics small{display:block;font-size:9px;color:#909c84;margin-top:5px;line-height:1.6}.fee-metrics .fee-token-amounts{grid-column:1/-1;overflow-wrap:anywhere;margin-top:0}
+.collection-status{display:flex;align-items:center;gap:9px;margin-top:17px;font-size:11px;color:#66795a}.collection-status>span{flex:1}.collection-status small{display:block;font-size:9px;color:#95a087;margin-top:5px}

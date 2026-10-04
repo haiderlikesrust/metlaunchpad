@@ -13,8 +13,9 @@ function pathOf(r:Request){return new URL(r.url).pathname.replace(/^\/api\//,"")
 export async function GET(request:Request){try{const path=pathOf(request);const url=new URL(request.url);
  if(/^metadata\/[a-zA-Z0-9-]+(?:\/image)?$/.test(path)){const {launchMetadata}=await import("@/lib/launch-executor");return launchMetadata(path.split("/")[1],path.endsWith("/image"));}
  if(path==="agent-analytics"){const {agentAnalytics}=await import("@/lib/agent-analytics");return Response.json(await agentAnalytics(url.searchParams.get("window")||"24h"),{headers:{"Cache-Control":"no-store"}});}
+ if(/^token\/[^/]+\/fees$/.test(path)){const {agentFees}=await import("@/lib/agent-fees");return Response.json(await agentFees(path.split("/")[1]),{headers:{"Cache-Control":"no-store"}});}
  if(/^token\/[^/]+\/candles$/.test(path)){const {tokenCandles}=await import("@/lib/token-candles");return Response.json(await tokenCandles(path.split("/")[1],url.searchParams.get("interval")||"1m"),{headers:{"Cache-Control":"no-store"}});}
- if(path.startsWith("coin/")){const {coinDetail}=await import("@/lib/coin-detail");return Response.json(await coinDetail(path.slice(5)),{headers:{"Cache-Control":"private, max-age=15"}});}
+ if(path.startsWith("coin/")){const {coinDetail}=await import("@/lib/coin-detail");return Response.json(await coinDetail(path.slice(5)),{headers:{"Cache-Control":"no-store"}});}
  if(path==="coins"||path==="pools"){const {thiccCoins}=await import("@/lib/coins");return Response.json(await thiccCoins(url,url.searchParams.get("mine")==="1"?owner(request):undefined),{headers:{"Cache-Control":"private, max-age=15"}});}
  if(path==="sol-price"){const {solPrice}=await import("@/lib/sol-price");return Response.json(await solPrice(),{headers:{"Cache-Control":"no-store"}});}
  if(path==="quotes"){const {quoteTokens}=await import("@/lib/quote-tokens");return Response.json({quotes:await quoteTokens()},{headers:{"Cache-Control":"private, max-age=60"}});}
@@ -31,7 +32,7 @@ export async function GET(request:Request){try{const path=pathOf(request);const 
  }catch(error){return safeError(error);}}
 
 export async function POST(request:Request){try{sameOrigin(request);const path=pathOf(request);const {boundedRequest}=await import("@/lib/request-limit");request=await boundedRequest(request,path==="launch/prepare"?1_020_000:50000);if(Number(request.headers.get("content-length"))>(path==="launch/prepare"?1_020_000:50000))throw new HttpError(413,"Request too large.");
- if(path==="internal/tick"){const token=config("AGENT_CRON_TOKEN");if(!token||request.headers.get("authorization")!==`Bearer ${token}`)throw new HttpError(401,"Unauthorized worker.");const {workerCycle}=await import("@/lib/worker-cycle");return Response.json(await workerCycle());}
+ if(["internal/tick","internal/market-tick","internal/claim-tick"].includes(path)){const token=config("AGENT_CRON_TOKEN");if(!token||request.headers.get("authorization")!==`Bearer ${token}`)throw new HttpError(401,"Unauthorized worker.");if(path==="internal/market-tick"){const {marketCycle}=await import("@/lib/market-cycle");return Response.json(await marketCycle());}if(path==="internal/claim-tick"){const {claimCycle}=await import("@/lib/fee-collection");return Response.json(await claimCycle());}const {workerCycle}=await import("@/lib/worker-cycle");return Response.json(await workerCycle());}
  if(config("THICC_RUNTIME")==="node"&&["wallet/challenge","wallet/verify","wallet/disconnect"].includes(path)){const {walletAuth}=await import("@/lib/wallet-auth");return walletAuth(request,path);}
  const id=owner(request);
  if(path==="launch/prepare"){const wallet=await boundWallet(id);const {createLaunch}=await import("@/lib/launch-executor");return Response.json(await createLaunch(id,wallet,await request.formData(),request.headers.get("idempotency-key")||""));}

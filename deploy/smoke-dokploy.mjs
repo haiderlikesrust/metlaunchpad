@@ -42,7 +42,8 @@ try{
  assert.equal((await (await fetch(base+"/api/account",{headers:{Cookie:authenticated}})).json()).wallet,wallet);
  assert.notEqual((await post("/api/wallet/verify",{wallet,signature},cookie)).status,200,"Nonce replay accepted");
  assert.equal((await fetch(base+"/api/account",{headers:{Cookie:authenticated+"x"}})).status,401);
- assert.equal((await fetch(base+"/api/internal/tick",{method:"POST"})).status,401);
+ for(const path of ['tick','market-tick','claim-tick'])assert.equal((await fetch(base+`/api/internal/${path}`,{method:'POST'})).status,401);
+ for(const path of ['market-tick','claim-tick'])assert.equal((await fetch(base+`/api/internal/${path}`,{method:'POST',headers:{Authorization:`Bearer ${token}`}})).status,200);
  const tick=await fetch(base+"/api/internal/tick",{method:"POST",headers:{Authorization:`Bearer ${token}`}});assert.equal(tick.status,200);
  assert.equal((await tick.json()).buybacks.status,"awaiting_configuration");
  console.log("Standalone smoke passed: seven routes, correct initial tab rendering, pinned model IDs, database health, wallet signature login, cookie verification, origin checks, nonce replay rejection, worker authentication, pending buyback configuration.");

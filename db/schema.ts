@@ -39,3 +39,5 @@ export const agentPositions=sqliteTable("agent_positions",{address:text("address
 export const runtimeLocks=sqliteTable("runtime_locks",{id:text("id").primaryKey(),token:text("token").notNull(),expiresAt:integer("expires_at").notNull()});
 
 export const modelCalls=sqliteTable("model_calls",{id:text("id").primaryKey(),agentId:text("agent_id").notNull(),model:text("model").notNull(),status:text("status").notNull(),costUsd:real("cost_usd"),reservedUsd:real("reserved_usd").notNull(),generationId:text("generation_id"),createdAt:integer("created_at").notNull()});
+
+export const feeCollectionState=sqliteTable("fee_collection_state",{agentId:text("agent_id").primaryKey(),lastCheckedAt:integer("last_checked_at"),nextCheckAt:integer("next_check_at").notNull().default(0),status:text("status").notNull().default("waiting"),lastError:text("last_error")});

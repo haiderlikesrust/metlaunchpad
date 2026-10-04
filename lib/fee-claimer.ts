@@ -1,7 +1,7 @@
 import BN from "bn.js";
 import {CpAmm,getUnClaimLpFee} from "@meteora-ag/cp-amm-sdk";
 import type {VersionedTransactionResponse} from "@solana/web3.js";
-import {database,pubkey,rpc} from "./server";
+import {database,HttpError,pubkey,rpc} from "./server";
 import {agentSigner} from "./custody";
 import {signOperation,type Operation} from "./chain-journal";
 import {chainEvents} from "./chain-events";
@@ -35,7 +35,7 @@ export async function claimFees(mint:string){
  const pending=await db.prepare("SELECT * FROM chain_operations WHERE agent_id=? AND purpose='claim' AND status IN ('submitted','prepared') ORDER BY created_at LIMIT 1").bind(agent).first<Operation>();
  if(pending){const {reconcileOperation,submitOperation}=await import("./chain-journal");const op=pending.status==="prepared"?await submitOperation(pending.id,pending.wire):await reconcileOperation(pending);await ingestClaim(op);return;}
  const context={baseMint:mint,quoteMint:state.launch.quote_mint,quoteDecimals:state.launch.quote_decimals,wallet:signer.publicKey.toBase58()};
- if(await gasBudget(agent)<1_000_000n)return;
+ if(await gasBudget(agent)<1_000_000n)throw new HttpError(409,"Fee collection is waiting for agent gas.");
  // DBC fees may still be unclaimed after graduation. Claim them before the DAMM position.
  if(state.pool.poolState.partnerBaseFee.gtn(0)||state.pool.poolState.partnerQuoteFee.gtn(0)){
   const op=await signOperation(crypto.randomUUID(),"claim",agent,async()=>({tx:await state.dbc.partner.claimPartnerTradingFee({feeClaimer:signer.publicKey,payer:signer.publicKey,pool:pubkey(state.launch.pool_address),maxBaseAmount:new BN("18446744073709551615"),maxQuoteAmount:new BN("18446744073709551615")}),signers:[signer],context:{...context,pool:state.launch.pool_address}}));await ingestClaim(op);return;
@@ -44,7 +44,7 @@ export async function claimFees(mint:string){
   const sdk=new CpAmm(rpc()),p=state.dammState,positions=await sdk.getUserPositionByPool(pubkey(state.graduated),signer.publicKey),[a,b]=await Promise.all([mintInfo(mint),mintInfo(state.launch.quote_mint)]);
   for(const position of positions){
    const fees=getUnClaimLpFee(p,position.positionState);if(fees.feeTokenA.isZero()&&fees.feeTokenB.isZero())continue;
-   const recent=await db.prepare("SELECT id FROM chain_operations WHERE agent_id=? AND purpose='claim' AND created_at>? AND json_extract(context_json,'$.position')=? LIMIT 1").bind(agent,Date.now()-300000,position.position.toBase58()).first();if(recent)continue;
+   const recent=await db.prepare("SELECT id FROM chain_operations WHERE agent_id=? AND purpose='claim' AND created_at>? AND json_extract(context_json,'$.position')=? LIMIT 1").bind(agent,Date.now()-30000,position.position.toBase58()).first();if(recent)continue;
    const op=await signOperation(crypto.randomUUID(),"claim",agent,async()=>({tx:await sdk.claimPositionFee({owner:signer.publicKey,position:position.position,positionNftAccount:position.positionNftAccount,pool:pubkey(state.graduated!),tokenAMint:p.tokenAMint,tokenBMint:p.tokenBMint,tokenAVault:p.tokenAVault,tokenBVault:p.tokenBVault,tokenAProgram:a.program,tokenBProgram:b.program}),signers:[signer],context:{...context,pool:state.graduated,position:position.position.toBase58()}}));await ingestClaim(op);break;
   }
  }

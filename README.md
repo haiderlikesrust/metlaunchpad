@@ -40,6 +40,7 @@ It does not submit blockchain transactions or call funded model accounts.
 - Supply: 1 billion tokens, 9 decimals.
 - Initial valuation: 20 SOL market cap; graduation target: 250 SOL market cap.
 - UI valuations are USD first; SOL is the default quote token.
+- A coin's website defaults to `https://thicc.money/token/<mint>` unless the creator supplies another website.
 - Initial swap fee: 1.5%; agent activation: $20 in verified claimed fees.
 - Earned-fee split: 60% compounding, 5% compute, 25% reserves,
   **10% main THICC buyback and burn**.
@@ -63,6 +64,12 @@ SOL gas refills and pinned SolCard deposits; and manages earned-fee DLMM positio
 Transactions are journaled before broadcast and reconciled using the same signed
 wire before a replacement can be built. Repositioned principal is accounted for
 separately from earned fees.
+
+Market indexing, 30-second fee-collection scheduling, and model execution run
+independently. Token pages refresh fee balances and activation progress every
+2 seconds, with 1–2 second candle updates. On-chain finality and wallet operations
+can delay updates or a claim. Historical trades missing a historical USD quote
+use an explicitly labeled current quote conversion for charts only.
 
 These integrations have local tests and production-build checks. **Funded
 end-to-end execution has not been verified against production credentials.**

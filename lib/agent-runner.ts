@@ -1,3 +1,4 @@
+import {withLock} from "./runtime-lock";
 import {nativeAgentState} from "./native-agent";
 import {database,event,HttpError} from "./server";
 import {askModel,getCredits} from "./openrouter";
@@ -22,7 +23,7 @@ export async function runAgent(row:AgentRow){
   const proposal=await askModel(row.model,market,policy,row.id),errors=validateProposal(proposal,market,policy,(now-(custody.last_action_at||0))/1000);
   if(errors.length){await event(row.owner,row.id,"blocked",errors.join(" "),{proposal,market});return {status:"blocked",errors};}
   if(proposal.action==="hold"){await event(row.owner,row.id,"decision",proposal.reason,{proposal,market});return {status:"hold"};}
-  const action=await manageLiquidity(custody.base_mint,proposal);await event(row.owner,row.id,"decision",action.reason,{proposal,market,action});return action;
+  const action=await withLock(`agent:${row.id}`,async()=>{const pending=await db.prepare("SELECT id FROM chain_operations WHERE agent_id=? AND status IN ('prepared','submitted') LIMIT 1").bind(row.id).first();if(pending)return {status:"observing",reason:"Waiting for the pending wallet transaction to finalize."};return manageLiquidity(custody.base_mint,proposal);});await event(row.owner,row.id,"decision",action.reason,{proposal,market,action});return action;
  }catch(error){await event(row.owner,row.id,"error",error instanceof HttpError?error.message:"Agent cycle stopped; pending transactions will be reconciled before retrying.");throw error;}
  finally{await db.prepare("UPDATE agents SET last_run=?,lease_until=0 WHERE id=?").bind(Date.now(),row.id).run();}
 }

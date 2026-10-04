@@ -3,8 +3,8 @@ import {withLock} from "./runtime-lock";
 import {reconcileOperation,submitOperation,type Operation} from "./chain-journal";
 import {continueLaunch} from "./launch-executor";
 import {indexMarket} from "./market-indexer";
-import {claimFees,ingestClaim} from "./fee-claimer";
-import {claimCompanionFees,executeLiquidityJob} from "./dlmm-executor";
+import {ingestClaim} from "./fee-claimer";
+import {executeLiquidityJob} from "./dlmm-executor";
 import {executeFeeJob,queueBuybacks,queueGas} from "./fee-jobs";
 import {runAgent,type AgentRow} from "./agent-runner";
 import {monitorComputeFunding} from "./credit-monitor";
@@ -14,11 +14,6 @@ import type {ExecutionJob} from "./asset-ledger";
 import {graduatePool} from "./migration-executor";
 import {reconcileModelUsage} from "./openrouter";
 async function busy(agent:string){return !!await database().prepare("SELECT id FROM chain_operations WHERE agent_id=? AND status IN ('prepared','submitted') LIMIT 1").bind(agent).first();}
-async function claimAvailable(agent:AgentRow&{base_mint:string}){
- await claimFees(agent.base_mint);
- if(!await busy(agent.id))await claimCompanionFees(agent.base_mint);
- await queueBuybacks();
-}
 export async function workerCycle(){return withLock("worker",async()=>{
  const db=database(),started=Date.now(),results:unknown[]=[];
  const pending=await db.prepare("SELECT * FROM chain_operations WHERE status='submitted' OR (status='prepared' AND agent_id IS NOT NULL) ORDER BY updated_at LIMIT 20").all<Operation>();
@@ -36,23 +31,26 @@ export async function workerCycle(){return withLock("worker",async()=>{
  for(const agent of agents.results){
   if(Date.now()-started>110000)break;
   await db.prepare("UPDATE agents SET last_tick=? WHERE id=?").bind(Date.now(),agent.id).run();
-  let job:ExecutionJob|null=null;
+  const work:{job:ExecutionJob|null}={job:null};
   try{
-   const market=await indexMarket(agent.base_mint);
-   if(await busy(agent.id)){results.push({id:agent.id,status:"confirming"});continue;}
-   await queueGas(agent.id,market.bootstrap);
+   const market=await indexMarket(agent.base_mint).catch(()=>null);
+   await withLock(`agent:${agent.id}`,async()=>{
+   if(await busy(agent.id)){results.push({id:agent.id,status:"confirming"});return;}
+   await queueGas(agent.id,market?.bootstrap);
    // Acquired assets finish their workflow before another swap can touch them.
-   job=await db.prepare("SELECT * FROM execution_jobs WHERE agent_id=? AND status!='complete' AND (status!='reserved' OR retry_at<=?) ORDER BY CASE WHEN status!='reserved' THEN 0 WHEN kind='gas' THEN 1 WHEN kind='buyback' THEN 2 ELSE 3 END,created_at LIMIT 1").bind(agent.id,Date.now()).first<ExecutionJob>();
+   const job=work.job=await db.prepare("SELECT * FROM execution_jobs WHERE agent_id=? AND status!='complete' AND (status!='reserved' OR retry_at<=?) ORDER BY CASE WHEN status!='reserved' THEN 0 WHEN kind='gas' THEN 1 WHEN kind='buyback' THEN 2 ELSE 3 END,created_at LIMIT 1").bind(agent.id,Date.now()).first<ExecutionJob>();
    if(job){
-    if((job.retry_at||0)>Date.now()){results.push({id:agent.id,status:"retry_wait"});continue;}
+    if((job.retry_at||0)>Date.now()){results.push({id:agent.id,status:"retry_wait"});return;}
     if(job.kind.startsWith("dlmm_"))await executeLiquidityJob(job);else await executeFeeJob(job);
    }else{
-    await claimAvailable(agent);
     const queued=await db.prepare("SELECT id FROM execution_jobs WHERE agent_id=? AND status!='complete' LIMIT 1").bind(agent.id).first();
-    if(!await busy(agent.id)&&!queued){await graduatePool(agent.base_mint);if(!await busy(agent.id)&&(!agent.last_run||Date.now()-agent.last_run>=300000))await runAgent(agent);}
+    if(!await busy(agent.id)&&!queued){await graduatePool(agent.base_mint);}
    }
+   });
+   if(!work.job&&!await busy(agent.id)&&(!agent.last_run||Date.now()-agent.last_run>=300000))await runAgent(agent);
    await writeAnalytics(agent.id);results.push({id:agent.id,status:"processed"});
   }catch(error){
+   const job=work.job;
    const message=error instanceof HttpError?error.message:"Execution paused while a dependency or transaction is checked.";
    if(job){const row=await db.prepare("SELECT attempts FROM execution_jobs WHERE id=?").bind(job.id).first<{attempts:number}>();const attempts=(row?.attempts||0)+1;await db.prepare("UPDATE execution_jobs SET retry_at=?,attempts=?,last_error=? WHERE id=?").bind(Date.now()+Math.min(3600000,300000*2**Math.min(attempts-1,4)),attempts,message,job.id).run();
     if(attempts===1||attempts%12===0)await event(agent.owner,agent.id,"execution_waiting",message,{jobId:job.id,kind:job.kind});

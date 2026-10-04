@@ -13,7 +13,7 @@ test("all deployment migrations apply once and retain records across startup",()
   migrate(path,resolve("drizzle"));
   db=new DatabaseSync(path);
   assert.equal(db.prepare("SELECT wallet FROM accounts WHERE id='test'").get().wallet,"test-wallet");
-  assert.equal(db.prepare("SELECT COUNT(*) count FROM _thicc_migrations").get().count,8);
+  assert.equal(db.prepare("SELECT COUNT(*) count FROM _thicc_migrations").get().count,9);
   assert.ok(db.prepare("SELECT name FROM sqlite_master WHERE type='trigger' AND name='reserve_thicc_buyback_after_claim'").get());
   db.close();
  }finally{rmSync(directory,{recursive:true,force:true});}

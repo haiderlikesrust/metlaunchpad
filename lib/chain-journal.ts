@@ -29,7 +29,7 @@ export async function reconcileOperation(row:Operation,connection:Connection=rpc
  if(["finalized","failed","expired"].includes(row.status)||!row.signature)return row;
  const status=(await connection.getSignatureStatuses([row.signature],{searchTransactionHistory:true})).value[0];
  if(status?.confirmationStatus==="finalized"){
-  const transaction=await connection.getTransaction(row.signature,{commitment:"finalized",maxSupportedTransactionVersion:0});
+  const transaction=await connection.getTransaction(row.signature,{commitment:"finalized",maxSupportedTransactionVersion:1});
   if(!transaction)return row;
   await database().prepare("UPDATE chain_operations SET status=?,result_json=?,error=?,updated_at=? WHERE id=?").bind(status.err?"failed":"finalized",JSON.stringify(transaction),status.err?"Transaction failed on-chain.":null,Date.now(),row.id).run();
  }else if(!status&&await connection.getBlockHeight("finalized")>row.last_valid_height){

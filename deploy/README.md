@@ -22,7 +22,11 @@ deployment. Wallet signatures authenticate users; proxy identity headers do not.
    path **/**. Enable HTTPS and HTTP-to-HTTPS redirection in Dokploy. Point the
    domain's DNS A record at your Dokploy server. Do not expose the worker.
 6. Deploy. The web container applies migrations before starting; the worker waits
-   for the web health check and calls the authenticated internal tick every 10 seconds (one cycle at a time).
+   for the web health check. Independent authenticated loops update markets every
+   2 seconds, check due fee collections every 3 seconds, and run execution every
+   10 seconds. Each agent's collection schedule is persisted at 30-second intervals.
+   A pending wallet transaction or acquired swap assets defer collection until safe;
+   slow model calls do not block market indexing or the collector.
 
 No secrets are needed at image build time. The Docker build context excludes
 local `.env` files, private keys, databases, preview state, and cached builds.
@@ -91,7 +95,9 @@ not submitted a funded chain transaction. After deploying this commit:
    authority, zero creator fee share, and the displayed agent as fee recipient.
 3. Test buy and sell with amounts you choose. Check finalized signatures, balances,
    and 1s/1m/5m/1h candles. Historical swaps without a matching price observation
-   remain unpriced; the service does not invent historical USD prices.
+   remain unpriced in accounting. Charts can display their actual quote-token prices
+   converted with a fresh current USD rate, explicitly labeled in the chart footer.
+   Token statistics and fees refresh every 2 seconds; candles refresh every 1–2 seconds.
 4. Verify a fee claim's exact received units and the 60/5/25/10 allocation. Confirm
    activation after $20 in finalized, priced claims. Creator gas does not count.
 5. Verify native graduation to DAMM v2 and additional agent-owned DLMM liquidity.

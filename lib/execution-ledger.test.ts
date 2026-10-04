@@ -15,7 +15,15 @@ registerHooks({resolve(specifier,context,next){return specifier==="cloudflare:wo
 const {nodeDatabase:db,closeNodeDatabase}=await import("./node-database");
 const {recordAssetClaim,assetBalance,reserveJob}=await import("./asset-ledger");
 const {prepareOperation,submitOperation,reconcileOperation,operation}=await import("./chain-journal");
+const {reserveCollectionCheck}=await import('./collection-schedule');
+const {withLock}=await import('./runtime-lock');
 const originalFetch=globalThis.fetch;
+test('collection scheduling survives repeated worker calls and agent locks exclude concurrent signing',async()=>{
+ const attempts=await Promise.all([reserveCollectionCheck('cadence',1000),reserveCollectionCheck('cadence',1000)]);assert.equal(attempts.filter(Boolean).length,1);
+ assert.equal(await reserveCollectionCheck('cadence',30999),false);assert.equal(await reserveCollectionCheck('cadence',31000),true);
+ await withLock('agent:cadence',async()=>{await assert.rejects(withLock('agent:cadence',async()=>{}),/already running/);});
+ assert.equal(await withLock('agent:cadence',async()=>true),true);
+});
 after(()=>{globalThis.fetch=originalFetch;closeNodeDatabase();assert.equal(dirname(directory),resolve(tmpdir()));assert.ok(basename(directory).startsWith("thicc-execution-test-"));rmSync(directory,{recursive:true,force:true});});
 test("claim allocation is idempotent, conserves bigint units, and prevents overspending",async()=>{
  const amount=123456789012345678n;await recordAssetClaim("agent-a","signature-a","mint-a",amount,9,1_000_000,1000);await recordAssetClaim("agent-a","signature-a","mint-a",amount,9,1_000_000,1000);
