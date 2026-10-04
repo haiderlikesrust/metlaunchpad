@@ -84,3 +84,38 @@ constant; it is not a full independent counterfactual replay. Unknown metrics
 remain unavailable.
 
 Never commit `.env`, session secrets, wallet keys, SQLite files, or build output.
+
+## Transfer-hook compatibility experiment
+
+`experiments/meteora-hooks` checks whether Token-2022 transfer hooks survive the
+native DBC-to-DAMM-v2 launch lifecycle. This is an isolated compatibility probe,
+not a deployed fee implementation. It uses Meteora's counter-hook fixture and
+the IDL from THICC's installed SDK. Results are in
+[`experiments/meteora-hooks/result.json`](experiments/meteora-hooks/result.json).
+
+**Result: the hook cannot provide continuing agent-controlled fees through native
+graduation.** All 16 upstream lifecycle cases passed locally. Hook-enabled swaps
+work, but the curve-completing swap clears the mint's hook program and permanently
+revokes its hook authority. Both remain cleared after DAMM v2 migration. The mint
+hook authority belongs to the DBC pool authority, not the THICC agent.
+See the [pinned protocol implementation](https://github.com/MeteoraAg/dynamic-bonding-curve/blob/f552f20aa3c1c7631427c3827aeea7c58b902813/programs/dynamic-bonding-curve/src/instructions/swap/process_swap.rs)
+and [lifecycle assertions](https://github.com/MeteoraAg/dynamic-bonding-curve/blob/f552f20aa3c1c7631427c3827aeea7c58b902813/tests/migrate_to_damm_v2_with_transfer_hook.tests.ts).
+
+Reproduce on Linux/WSL with Node 24, Git, Rust and Solana `cargo-build-sbf` available
+on PATH, after installing THICC dependencies. The reviewed run used Solana
+3.1.14 / platform-tools 1.52. Run from the app root with a fresh research checkout:
+
+```sh
+git clone https://github.com/MeteoraAg/dynamic-bonding-curve.git .data/research/dbc
+git -C .data/research/dbc checkout f552f20aa3c1c7631427c3827aeea7c58b902813
+(cd .data/research/dbc && npm install --ignore-scripts --no-audit --no-fund)
+(cd .data/research/dbc && cargo build-sbf --manifest-path programs/dynamic-bonding-curve/Cargo.toml --sbf-out-dir target/deploy -- --features local)
+node experiments/meteora-hooks/run.mjs
+```
+
+The runner rejects modified upstream tracked files, blocks test network calls,
+and records binary hashes plus each test name under `.data/research`. Setup
+downloads dependencies; tests use only the in-process LiteSVM ledger and generated
+test accounts. The `local` build bypasses the DBC admin allowlist for test setup. This
+does not establish mainnet program equivalence, production hook access, or fee
+collection correctness. The production app remains on its existing native path.

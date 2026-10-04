@@ -1,0 +1,48 @@
+{
+  "checkedAt": "2026-10-04T23:55:28.552Z",
+  "upstream": "https://github.com/MeteoraAg/dynamic-bonding-curve",
+  "revision": "f552f20aa3c1c7631427c3827aeea7c58b902813",
+  "node": "v24.10.0",
+  "litesvm": "0.1.0",
+  "sdkIdlVersion": "0.2.1",
+  "build": "cargo build-sbf --manifest-path programs/dynamic-bonding-curve/Cargo.toml --sbf-out-dir target/deploy -- --features local",
+  "binaries": {
+    "target/deploy/dynamic_bonding_curve.so": "0a9074a88d8dba45dfed440ff183aa6a7b258d716358e3decb9dd7839b27a46f",
+    "tests/fixtures/transfer_hook_counter.so": "febe404b8319df20dc08d2c4703d5379be1c0983d5042a11b78fe723f9246b44",
+    "tests/fixtures/damm_v2.so": "c5b9f10d7095579208b1fb35a52f70de6215c3a125b88d50515741cb9fec2f6e"
+  },
+  "runtime": "LiteSVM local execution; network calls blocked; no funded accounts",
+  "tests": [
+    "Create pool with token2022 transfer hook Partner create config",
+    "Create pool with token2022 transfer hook Create token2022 pool with transfer hook",
+    "Create pool with token2022 transfer hook Initialize extra account meta list for transfer hook",
+    "Create pool with token2022 transfer hook Swap with referral and transfer hook",
+    "Create pool with token2022 transfer hook Swap",
+    "Create pool with token2022 transfer hook Partner claim trading fee",
+    "Create pool with token2022 transfer hook Creator claim trading fee",
+    "Create pool with token2022 transfer hook Partner claim trading fee rejects transfer hook pool",
+    "Create pool with token2022 transfer hook Creator claim trading fee rejects transfer hook pool",
+    "Migrate to damm v2 with transfer hook Admin create operator account",
+    "Migrate to damm v2 with transfer hook Partner create config",
+    "Migrate to damm v2 with transfer hook Create token2022 pool with transfer hook",
+    "Migrate to damm v2 with transfer hook Initialize extra account meta list for transfer hook",
+    "Migrate to damm v2 with transfer hook Swap (curve-completing swap revokes transfer hook)",
+    "Migrate to damm v2 with transfer hook Create meteora damm v2 metadata",
+    "Migrate to damm v2 with transfer hook Migrate to Meteora Damm V2 Pool"
+  ],
+  "passes": 16,
+  "failures": 0,
+  "verdict": "incompatible-with-persistent-fees-through-native-graduation",
+  "findings": [
+    "Hook-enabled Token-2022 creation, swaps, and v2 fee claims pass.",
+    "The DBC pool authority owns the mint hook authority, not the creator or THICC agent.",
+    "The curve-completing swap clears both hook program ID and hook authority.",
+    "Both remain cleared after native DAMM v2 migration."
+  ],
+  "limitations": [
+    "Built reviewed upstream source with local feature; not verification of a deployed mainnet binary.",
+    "Counter hook validates lifecycle compatibility, not directional fee collection.",
+    "The local feature bypasses the DBC admin allowlist for test setup; production access was not tested.",
+    "No changes to THICC production launch, trading, or agent fee policy."
+  ]
+}
