@@ -20,7 +20,7 @@ are seeded. The older Sites preview is available as `npm run dev:sites`.
 ## Deploy on Dokploy
 
 Use `compose.dokploy.yaml` and `deploy/dokploy.env.example`. Point the Dokploy domain
-**thicc.money** at service **web**, port **3000**, with HTTPS enabled.
+**thicc.money** at service **web**, port **3187**, with HTTPS enabled.
 See [the deployment guide](deploy/README.md) for environment values, migrations,
 volume backups, health checks, and the single-replica SQLite requirement.
 
@@ -53,20 +53,27 @@ There is no custom THICC vault-program deployment requirement. Server-controlled
 custody is not a trustless immutable spending boundary. The older Rust prototype
 under `protocol` is retained as experimental source and is not used by the app.
 
-## Implementation status
+## Execution and verification
 
-Implemented: shared navigation, separate launch form and identity preview,
-THICC-only coin directory, real quote registry/logos, live SOL conversion,
-`/token/<mint>` detail pages with four chart intervals, agent-wallet display,
-analytics views over verified records, detailed `/docs`, fixed-policy validation,
-adaptive compute funding plans, claim-triggered buyback reservations, wallet
-sessions, persistent database migrations, Docker and Dokploy configuration.
+The server prepares native DBC launches, stores persistent metadata, verifies
+finalized fee rights and fixed supply, and supports wallet-approved DBC/DAMM v2
+trades. The worker indexes authenticated on-chain swap events; claims native and
+DLMM fees; maintains token-unit allocations; executes Jupiter swaps, SPL burns,
+SOL gas refills and pinned SolCard deposits; and manages earned-fee DLMM positions.
+Transactions are journaled before broadcast and reconciled using the same signed
+wire before a replacement can be built. Repositioned principal is accounted for
+separately from earned fees.
 
-**Financial execution is not live.** Launch transactions, metadata storage,
-verified claim/trade ingestion, LP execution, swap/burn signing, SolCard deposits,
-and complete unmanaged-pool replay still require integration and validation.
-Launch endpoints return unavailable instead of pretending to create tokens.
-Candle charts require indexed real swaps. A buyback reservation is not a completed
-purchase or burn, and a model proposal is not an executed transaction.
+These integrations have local tests and production-build checks. **Funded
+end-to-end execution has not been verified against production credentials.**
+The Docker image also needs verification on a host with a running Docker engine.
+See the deployment guide for the live acceptance sequence.
+
+The original graduated DAMM v2 position is permanently locked. Range management
+applies to additional DLMM liquidity built from earned fees. Model-directed fee
+changes are not available for the configured native fee structures; the initial
+fee is 1.5%. The normal-pool comparison holds observed native-position activity
+constant; it is not a full independent counterfactual replay. Unknown metrics
+remain unavailable.
 
 Never commit `.env`, session secrets, wallet keys, SQLite files, or build output.

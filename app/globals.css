@@ -43,3 +43,8 @@
 .agent-wallet-card{padding:16px;margin:20px 0;background:#f6f8ef;border:1px solid #e3e9d8;border-radius:14px}
 .agent-wallet-address{display:flex;gap:12px;align-items:center;font-family:monospace;font-size:12px;overflow-wrap:anywhere;line-height:1.7;margin:12px 0;color:#516d3d}
 .agent-wallet-address:hover{text-decoration:underline}.agent-wallet-card small{font-size:10px;line-height:1.7}.agent-wallet-card p{margin:10px 0 0;font-size:12px}
+
+.trade-panel { margin-bottom: 20px; }
+.trade-tabs { display:flex; gap:8px; margin-bottom:20px; background:var(--surface, #f4f5ed); padding:5px; border-radius:12px; }
+.trade-tabs button { flex:1; padding:12px; border-radius:9px; color:inherit; background:transparent; border:0; cursor:pointer; }
+.trade-tabs button.selected { background:#232b1f; color:#f2f6e8; }

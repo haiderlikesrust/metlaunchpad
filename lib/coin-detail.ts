@@ -19,13 +19,16 @@ export async function coinDetail(mint:string):Promise<CoinDetail>{
  try{
   const sol=await solPrice();detail.graduationUsd=250*sol.solPrice;
   if(r.pool_kind==="dbc"){
-   const {DynamicBondingCurveClient,getPriceFromSqrtPrice}=await import("@meteora-ag/dynamic-bonding-curve-sdk");
-   const connection=rpc(),client=new DynamicBondingCurveClient(connection,"finalized"),pool=await client.state.getPool(r.pool_address);
-   if(!pool||pool.poolState.baseMint.toBase58()!==mint)throw new Error("Coin mint mismatch");const config=await client.state.getPoolConfig(pool.poolState.config);if(!config)throw new Error("Curve configuration unavailable");
-   const progress=curveProgress(BigInt(pool.poolState.quoteReserve.toString()),BigInt(config.migrationQuoteThreshold.toString()),pool.poolState.isMigrated!==0);
-   detail.bondingPct=progress.percent;detail.status=progress.status;detail.quoteMint=config.quoteMint.toBase58();detail.quoteSymbol=detail.quoteMint===SOL_MINT?"SOL":"Quote";
-   if(detail.quoteMint===SOL_MINT){const priceQuote=getPriceFromSqrtPrice(pool.poolState.sqrtPrice,config.tokenDecimal,9).toNumber();detail.priceUsd=priceQuote*sol.solPrice;const mintInfo=await connection.getAccountInfo(pubkey(mint),"finalized");if(mintInfo){const token=await getMint(connection,pubkey(mint),"finalized",mintInfo.owner);detail.marketCapUsd=Number(token.supply)/10**token.decimals*detail.priceUsd;}}
-   detail.observedAt=Date.now();
+   const {livePool}=await import("./pool-state"),{assetPrice}=await import("./asset-price");const state=await livePool(mint),quote=await assetPrice(state.launch.quote_mint);
+   const progress=curveProgress(BigInt(state.pool.poolState.quoteReserve.toString()),BigInt(state.curve.migrationQuoteThreshold.toString()),!!state.graduated);
+   detail.bondingPct=progress.percent;detail.status=progress.status;detail.quoteMint=state.launch.quote_mint;detail.quoteSymbol=detail.quoteMint===SOL_MINT?"SOL":"Quote";
+   detail.priceUsd=state.priceQuote*quote.usdPrice;detail.marketCapUsd=1_000_000_000*detail.priceUsd;detail.graduationUsd=state.launch.graduation_quote*quote.usdPrice;
+   const observation=await database().prepare("SELECT liquidity_usd,observed_at FROM pool_observations WHERE pool=? ORDER BY observed_at DESC LIMIT 1").bind(state.graduated||state.launch.pool_address).first<{liquidity_usd:number;observed_at:number}>();
+   if(observation&&Date.now()-observation.observed_at<120000)detail.liquidityUsd=observation.liquidity_usd;
+   const stats=await database().prepare("SELECT COALESCE(SUM(volume_usd),0) volume,COALESCE(SUM(fee_usd),0) fees FROM token_trades WHERE mint=? AND at>?").bind(mint,Date.now()-86400000).first<{volume:number;fees:number}>();
+   const coverage=await database().prepare("SELECT last_indexed_at FROM pool_cursors WHERE pool=?").bind(state.graduated||state.launch.pool_address).first<{last_indexed_at:number|null}>();
+   const unpriced=await database().prepare("SELECT COUNT(*) n FROM raw_swaps r LEFT JOIN token_trades t ON t.id=r.id WHERE r.mint=? AND r.at>? AND t.id IS NULL").bind(mint,Date.now()-86400000).first<{n:number}>();
+   if(coverage?.last_indexed_at&&Date.now()-coverage.last_indexed_at<120000&&!unpriced?.n){detail.volume24hUsd=stats?.volume??0;detail.fees24hUsd=stats?.fees??0;}detail.observedAt=Date.now();
   }else{
    const p=await poolData(r.pool_address);if(p.token_x.address!==mint&&p.token_y.address!==mint)throw new Error("Coin mint mismatch");const token=p.token_x.address===mint?p.token_x:p.token_y;
    detail.priceUsd=token.price;detail.liquidityUsd=p.tvl;detail.volume24hUsd=p.volume["24h"]??null;detail.fees24hUsd=p.fees["24h"]??null;detail.observedAt=Date.now();

@@ -13,6 +13,9 @@ services:
       SESSION_SECRET: ${SESSION_SECRET:?Set a random SESSION_SECRET of at least 32 characters}
       AGENT_CRON_TOKEN: ${AGENT_CRON_TOKEN:?Set a different random AGENT_CRON_TOKEN}
       DATABASE_PATH: /data/thicc.sqlite
+      PORT: "3187"
+      JUPITER_API_KEY: ${JUPITER_API_KEY:-}
+      EXECUTION_PAUSED: ${EXECUTION_PAUSED:-false}
       QUICKNODE_RPC_URL: ${QUICKNODE_RPC_URL:-}
       OPENROUTER_API_KEY: ${OPENROUTER_API_KEY:-}
       OPENROUTER_MANAGEMENT_KEY: ${OPENROUTER_MANAGEMENT_KEY:-}
@@ -23,12 +26,12 @@ services:
     volumes:
       - thicc-data:/data
     expose:
-      - "3000"
+      - "3187"
     networks:
       - dokploy-network
       - app
     healthcheck:
-      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3000/api/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3187/api/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
       interval: 30s
       timeout: 5s
       start_period: 45s
@@ -47,7 +50,7 @@ services:
         condition: service_healthy
     environment:
       AGENT_CRON_TOKEN: ${AGENT_CRON_TOKEN:?Set AGENT_CRON_TOKEN}
-      WORKER_API_ORIGIN: http://web:3000
+      WORKER_API_ORIGIN: http://web:3187
     networks:
       - app
 

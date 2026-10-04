@@ -3,7 +3,7 @@ import {database,HttpError} from "./server";
 import type {AgentAnalytics,AnalyticsCoin,AnalyticsWindow} from "./agent-analytics-types";
 const metric=z.number().finite().nonnegative().nullable();
 const actualSchema=z.object({liquidityUsd:metric,feesUsd:metric,gasUsd:metric,computeUsd:metric,compoundedUsd:metric,slippageBps:metric,rebalances:z.number().int().nonnegative().nullable(),feeBps:metric}).strict();
-const baselineSchema=z.object({feesUsd:z.number().finite().nonnegative(),gasUsd:z.number().finite().nonnegative(),slippageBps:metric,method:z.literal("fixed-launch-position-v1"),replayComplete:z.boolean()}).strict();
+const baselineSchema=z.object({feesUsd:z.number().finite().nonnegative(),gasUsd:z.number().finite().nonnegative(),slippageBps:metric,method:z.literal("native-position-observed-flow-v1"),replayComplete:z.boolean()}).strict();
 type Row={mint:string;name:string;symbol:string;pool_address:string;agent_id:string|null;model:string|null;state:string|null;as_of:number|null;period_start:number|null;period_end:number|null;actual_json:string|null;baseline_json:string|null;action_kind:string|null;action_at:number|null};
 export async function agentAnalytics(window:string):Promise<AgentAnalytics>{
  if(!["24h","7d","30d"].includes(window))throw new HttpError(400,"Choose 24h, 7d, or 30d.");

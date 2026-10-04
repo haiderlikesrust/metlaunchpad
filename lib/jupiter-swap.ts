@@ -1,0 +1,29 @@
+import {ComputeBudgetProgram,PublicKey,SystemProgram,TransactionInstruction,TransactionMessage,VersionedTransaction} from "@solana/web3.js";
+import {ASSOCIATED_TOKEN_PROGRAM_ID,TOKEN_PROGRAM_ID,TOKEN_2022_PROGRAM_ID,createAssociatedTokenAccountIdempotentInstruction,createSyncNativeInstruction,getAssociatedTokenAddressSync,unpackAccount} from "@solana/spl-token";
+import {config,HttpError,pubkey,rpc} from "./server";
+import {mintInfo} from "./pool-state";
+import {SOL_MINT} from "./launch-economics";
+type ApiInstruction={programId:string;accounts:{pubkey:string;isSigner:boolean;isWritable:boolean}[];data:string};
+type Build={inputMint:string;outputMint:string;inAmount:string;outAmount:string;otherAmountThreshold:string;swapMode:string;slippageBps:number;priceImpactPct?:string;setupInstructions:ApiInstruction[];swapInstruction:ApiInstruction;cleanupInstruction:ApiInstruction|null;otherInstructions:ApiInstruction[];tipInstruction:ApiInstruction|null;addressesByLookupTableAddress:Record<string,string[]>|null};
+const JUPITER="JUP6LkbZbjS1jKKwapdHNy74zcZ3tLUZoi5QNyVTaV4";
+export async function buildEarnedSwap(wallet:PublicKey,inputMint:string,outputMint:string,amount:bigint){
+ const key=config("JUPITER_API_KEY");if(!key)throw new HttpError(503,"Jupiter API is required for earned-fee swaps.");if(amount<=0n||inputMint===outputMint)throw new Error("Invalid swap.");
+ const [input,output]=await Promise.all([mintInfo(inputMint),mintInfo(outputMint)]),inputAta=getAssociatedTokenAddressSync(pubkey(inputMint),wallet,false,input.program),outputAta=getAssociatedTokenAddressSync(pubkey(outputMint),wallet,false,output.program);
+ const response=await fetch(`https://api.jup.ag/swap/v2/build?${new URLSearchParams({inputMint,outputMint,amount:amount.toString(),taker:wallet.toBase58(),slippageBps:"50",wrapAndUnwrapSol:"false",destinationTokenAccount:outputAta.toBase58(),maxAccounts:"48"})}`,{headers:{"x-api-key":key},signal:AbortSignal.timeout(15000)});if(!response.ok)throw new HttpError(503,"No executable swap route is available.");
+ const build=await response.json() as Build;
+ if(build.inputMint!==inputMint||build.outputMint!==outputMint||build.inAmount!==amount.toString()||build.swapMode!=="ExactIn"||build.slippageBps>50||BigInt(build.otherAmountThreshold)<=0n||BigInt(build.otherAmountThreshold)<BigInt(build.outAmount)*9950n/10000n||(!Number.isFinite(Number(build.priceImpactPct||0))||Math.abs(Number(build.priceImpactPct||0))>.005)||build.swapInstruction.programId!==JUPITER||build.tipInstruction||build.otherInstructions?.length||build.cleanupInstruction)throw new Error("Swap route does not meet execution policy.");
+ const toIx=(ix:ApiInstruction)=>new TransactionInstruction({programId:pubkey(ix.programId),keys:ix.accounts.map(a=>({...a,pubkey:pubkey(a.pubkey)})),data:Buffer.from(ix.data,"base64")});
+ for(const ix of build.setupInstructions){if(ix.programId!==ASSOCIATED_TOKEN_PROGRAM_ID.toBase58()||ix.accounts[0]?.pubkey!==wallet.toBase58()||ix.accounts[2]?.pubkey!==wallet.toBase58()||![inputMint,outputMint].includes(ix.accounts[3]?.pubkey))throw new Error("Unexpected swap setup instruction.");}
+ if(build.swapInstruction.accounts.some(a=>a.isSigner&&a.pubkey!==wallet.toBase58()))throw new Error("Unexpected swap signer.");
+ const connection=rpc(),lookupTables=[];for(const address of Object.keys(build.addressesByLookupTableAddress||{})){const table=await connection.getAddressLookupTable(pubkey(address));if(!table.value)throw new Error("Swap lookup table is unavailable.");lookupTables.push(table.value);}
+ const setup=[createAssociatedTokenAccountIdempotentInstruction(wallet,inputAta,wallet,pubkey(inputMint),input.program),createAssociatedTokenAccountIdempotentInstruction(wallet,outputAta,wallet,pubkey(outputMint),output.program)];
+ if(inputMint===SOL_MINT)setup.push(SystemProgram.transfer({fromPubkey:wallet,toPubkey:inputAta,lamports:amount}),createSyncNativeInstruction(inputAta));
+ const latest=await connection.getLatestBlockhash(),tx=new VersionedTransaction(new TransactionMessage({payerKey:wallet,recentBlockhash:latest.blockhash,instructions:[ComputeBudgetProgram.setComputeUnitLimit({units:1_400_000}),ComputeBudgetProgram.setComputeUnitPrice({microLamports:1000}),...setup,...build.setupInstructions.map(toIx),toIx(build.swapInstruction)]}).compileToV0Message(lookupTables));
+ const pre=await connection.getMultipleAccountsInfo([wallet,inputAta,outputAta]),simulation=await connection.simulateTransaction(tx,{sigVerify:false,accounts:{encoding:"base64",addresses:[wallet.toBase58(),inputAta.toBase58(),outputAta.toBase58()]}});
+ if(simulation.value.err||!simulation.value.accounts?.[1]||!simulation.value.accounts?.[2])throw new HttpError(409,"Earned-fee swap simulation failed.");
+ const read=(i:number,address:PublicKey,program:PublicKey)=>{const a=simulation.value.accounts![i]!;return unpackAccount(address,{...a,owner:pubkey(a.owner),data:Buffer.from(a.data[0],"base64")},program);};
+ const inAfter=read(1,inputAta,input.program),outAfter=read(2,outputAta,output.program),inBefore=pre[1]?unpackAccount(inputAta,pre[1],input.program).amount:0n,outBefore=pre[2]?unpackAccount(outputAta,pre[2],output.program).amount:0n;
+ if(!inAfter.owner.equals(wallet)||!outAfter.owner.equals(wallet)||inAfter.delegate||outAfter.delegate||inAfter.closeAuthority||outAfter.closeAuthority||outAfter.amount-outBefore<BigInt(build.otherAmountThreshold)||inBefore+(inputMint===SOL_MINT?amount:0n)-inAfter.amount!==amount)throw new Error("Simulated swap violates asset constraints.");
+ const spent=BigInt(pre[0]?.lamports||0)-BigInt(simulation.value.accounts[0]?.lamports||0);if(spent>(inputMint===SOL_MINT?amount:0n)+10_000_000n)throw new Error("Swap SOL overhead exceeds policy.");
+ return {tx,context:{inputMint,outputMint,amount:amount.toString(),minimumOut:build.otherAmountThreshold,outputAta:outputAta.toBase58(),outputDecimals:output.mint.decimals}};
+}

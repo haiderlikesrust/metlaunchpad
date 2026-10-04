@@ -3,6 +3,7 @@ import {mkdirSync} from "node:fs";
 import {dirname,resolve} from "node:path";
 
 let connection:DatabaseSync|undefined;
+export function closeNodeDatabase(){connection?.close();connection=undefined;}
 function sqlite(){
  if(!connection){
   const path=resolve(process.env.DATABASE_PATH||".data/thicc.sqlite");
@@ -17,7 +18,8 @@ class Statement{
  bind(...args:SQLInputValue[]){return new Statement(this.sql,args);}
  async first<T=Record<string,unknown>>(column?:string):Promise<T|null>{const row=sqlite().prepare(this.sql).get(...this.args);return (row?(column?row[column]:row):null) as T|null;}
  async all<T=Record<string,unknown>>(){return {results:sqlite().prepare(this.sql).all(...this.args) as T[],success:true,meta:{}};}
- async run(){const result=sqlite().prepare(this.sql).run(...this.args);return {results:[],success:true,meta:{changes:Number(result.changes),last_row_id:Number(result.lastInsertRowid)}};}
+ runSync(){const result=sqlite().prepare(this.sql).run(...this.args);return {results:[],success:true,meta:{changes:Number(result.changes),last_row_id:Number(result.lastInsertRowid)}};}
+ async run(){return this.runSync();}
  async raw(){const rows=sqlite().prepare(this.sql).all(...this.args);return rows.map(row=>Object.values(row));}
 }
 /** D1-shaped adapter for the existing parameterized SQL repository. One web
@@ -27,7 +29,7 @@ export const nodeDatabase={
  prepare(sql:string){return new Statement(sql);},
  async batch(statements:Statement[]){
   const db=sqlite();db.exec("BEGIN IMMEDIATE");
-  try{const results=[];for(const statement of statements)results.push(await statement.run());db.exec("COMMIT");return results;}
+  try{const results=statements.map(statement=>statement.runSync());db.exec("COMMIT");return results;}
   catch(error){db.exec("ROLLBACK");throw error;}
  },
  async exec(sql:string){sqlite().exec(sql);return {count:1,duration:0};},

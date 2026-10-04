@@ -22,8 +22,8 @@ export async function monitorComputeFunding(){
   let targetHours=saved?.target_hours||24;
   let plan=planAdaptiveFunding({samples,now,availableEarnedComputeMicros:available,pending:!!pending,destinationVerified:verified,targetHours});
   if(plan.action==="top_up"&&(!saved?.last_forecast_at||now-saved.last_forecast_at>=3600000)){
-   const agent=await db.prepare("SELECT a.model FROM agents a JOIN agent_custody c ON c.agent_id=a.id WHERE a.status='active' LIMIT 1").first<{model:string}>();
-   if(agent){const forecast=await forecastCreditRunway(agent.model,samples,now);targetHours=forecast.targetHours;await db.prepare("UPDATE funding_monitor SET target_hours=?,last_forecast_at=? WHERE id='openrouter'").bind(targetHours,now).run();plan=planAdaptiveFunding({samples,now,availableEarnedComputeMicros:available,pending:false,destinationVerified:verified,targetHours});}
+   const agent=await db.prepare("SELECT a.id,a.model FROM agents a JOIN agent_custody c ON c.agent_id=a.id WHERE a.status='active' LIMIT 1").first<{id:string;model:string}>();
+   if(agent){const forecast=await forecastCreditRunway(agent.model,agent.id,samples,now);targetHours=forecast.targetHours;await db.prepare("UPDATE funding_monitor SET target_hours=?,last_forecast_at=? WHERE id='openrouter'").bind(targetHours,now).run();plan=planAdaptiveFunding({samples,now,availableEarnedComputeMicros:available,pending:false,destinationVerified:verified,targetHours});}
   }
   if(plan.action==="top_up")await db.prepare("INSERT INTO funding(id,owner,address,amount_usd,status,created_at) SELECT ?,'platform',?,?,'awaiting_executor',? WHERE NOT EXISTS (SELECT 1 FROM funding WHERE status IN ('awaiting_executor','awaiting_fee_claim','submitted','confirmed'))").bind(crypto.randomUUID(),destination,Number(plan.amountMicros)/1e6,now).run();
   const result=JSON.parse(JSON.stringify(plan,(_key,value)=>typeof value==="bigint"?value.toString():value)) as Record<string,unknown>;

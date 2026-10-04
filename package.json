@@ -17,7 +17,9 @@
   },
   "dependencies": {
     "@base-ui/react": "^1.7.0",
+    "@coral-xyz/anchor": "^0.32.1",
     "@hookform/resolvers": "^5.7.1",
+    "@meteora-ag/cp-amm-sdk": "^1.5.1",
     "@meteora-ag/dlmm": "^1.9.14",
     "@meteora-ag/dynamic-bonding-curve-sdk": "^1.5.13",
     "@shadcn/react": "^0.3.0",
