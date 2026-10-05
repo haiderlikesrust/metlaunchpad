@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import "./globals.css";
+import SiteFooter from "@/components/site-footer";
 
 export const metadata: Metadata = {
   title: "THICC — Autonomous liquidity",
@@ -20,7 +21,7 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en">
-      <body className="antialiased">{children}</body>
+      <body className="antialiased">{children}<SiteFooter/></body>
     </html>
   );
 }
