@@ -4,7 +4,7 @@ import {distributeClaim,nextBuybackAction,type BuybackJob} from "./fee-distribut
 
 test("10% is set aside independently of activation, conserving every unit",()=>{
  const split=distributeClaim(10000n);
- assert.deepEqual(split,{buybackBurn:1000n,compound:6000n,compute:500n,reserve:2500n,cumulative:10000n});
+ assert.deepEqual(split,{buybackBurn:1000n,compound:5500n,compute:1000n,reserve:2500n,cumulative:10000n});
  assert.throws(()=>distributeClaim(-1n));
 });
 test("small repeated claims carry buyback dust instead of avoiding the 10%",()=>{

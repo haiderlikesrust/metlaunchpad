@@ -1,5 +1,5 @@
 export type CreditSample={at:number;remainingMicros:bigint;usedMicros:bigint};
-export type FundingPlan={action:"hold";reason:string}|{action:"top_up";amountMicros:bigint;hourlyUsageMicros:bigint;targetHours:number;remainingMicros:bigint;limitedByEarnedFees:boolean};
+export type FundingPlan={action:"hold";reason:string}|{action:"top_up";amountMicros:bigint;hourlyUsageMicros:bigint;targetHours:number;remainingMicros:bigint;limitedByEarnedFees:boolean;bootstrap?:boolean};
 const HOUR=3_600_000;
 /** Cumulative OpenRouter usage avoids confusing a credit purchase with spend. */
 export function hourlyUsage(samples:CreditSample[],now:number):bigint|null{
@@ -10,9 +10,14 @@ export function hourlyUsage(samples:CreditSample[],now:number):bigint|null{
  const usedAtCutoff=before.at===after.at?before.usedMicros:before.usedMicros+(after.usedMicros-before.usedMicros)*BigInt(cutoff-before.at)/BigInt(after.at-before.at);
  return last.usedMicros-usedAtCutoff;
 }
-export function planAdaptiveFunding(input:{samples:CreditSample[];now:number;availableEarnedComputeMicros:bigint;pending:boolean;destinationVerified:boolean;targetHours?:number;triggerHours?:number}):FundingPlan{
- if(input.pending)return {action:"hold",reason:"A deposit is pending credit reconciliation."};
+export function planAdaptiveFunding(input:{samples:CreditSample[];now:number;availableEarnedComputeMicros:bigint;pending:boolean;destinationVerified:boolean;targetHours?:number;triggerHours?:number;bootstrap?:boolean}):FundingPlan{
+ if(input.pending)return {action:"hold",reason:"A SolCard deposit is being prepared or confirmed on-chain."};
  if(!input.destinationVerified)return {action:"hold",reason:"A verified permanent deposit destination is required."};
+ if(input.bootstrap){const last=[...input.samples].sort((a,b)=>a.at-b.at).at(-1);
+  const amount=input.availableEarnedComputeMicros/10000n*10000n;
+  if(amount<=0n)return {action:'hold',reason:'Waiting for spendable earned fees for the initial AI deposit.'};
+  return {action:'top_up',amountMicros:amount,hourlyUsageMicros:0n,targetHours:24,remainingMicros:last?.remainingMicros??0n,limitedByEarnedFees:true,bootstrap:true};
+ }
  const rate=hourlyUsage(input.samples,input.now);
  if(rate===null)return {action:"hold",reason:"A complete hour of fresh credit usage is required."};
  if(rate===0n)return {action:"hold",reason:"No credit usage was measured in the last hour."};

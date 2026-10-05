@@ -42,7 +42,9 @@ It does not submit blockchain transactions or call funded model accounts.
 - UI valuations are USD first; SOL is the default quote token.
 - A coin's website defaults to `https://thicc.money/token/<mint>` unless the creator supplies another website.
 - Initial swap fee: 2% for new launches (earlier coins retain 1.5%); agent activation: $20 in verified claimed fees.
-- Earned-fee split: 60% compounding, 5% compute, 25% reserves,
+- Optional dev buy uses the chosen quote token and the creator wallet, atomically with pool creation, with a 0.5% slippage limit. Blank/zero leaves the launch unchanged.
+- Each token has a live agent console with worker check-ins, market checks, model decisions, funding status and transaction receipts. Monitoring continues while paid inference adapts to earned runway.
+- AI funding starts at 50% of earned fees, then adapts to usage and treasury size (10–70%), preserving at least 20% reserves and
   **10% main THICC buyback and burn**.
 - The buyback reservation is claim-triggered and independent of the AI model.
   Missing `THICC_TOKEN_MINT` leaves it pending.

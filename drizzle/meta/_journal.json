@@ -64,6 +64,7 @@
       "when": 1791156478035,
       "tag": "0008_live_fee_collection",
       "breakpoints": true
-    }
+    },
+    {"idx":9,"version":"6","when":1791160000000,"tag":"0009_agent_compute_budget","breakpoints":true}
   ]
 }

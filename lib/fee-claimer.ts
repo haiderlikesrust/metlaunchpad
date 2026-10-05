@@ -28,7 +28,9 @@ export async function ingestClaim(op:Operation){
  }
  const rows=await database().prepare("SELECT amount,mint,decimals,usd_micros FROM asset_claims WHERE signature=?").bind(op.signature).all<{amount:string;mint:string;decimals:number;usd_micros:number|null}>();
  for(const row of rows.results)if(row.usd_micros===null){const price=await historicalPrice(row.mint,at);if(price!==null){const usd=Math.floor(Number(BigInt(row.amount))/10**row.decimals*price*1e6);if(Number.isSafeInteger(usd))await database().prepare("UPDATE asset_claims SET usd_micros=? WHERE signature=? AND mint=? AND usd_micros IS NULL").bind(usd,op.signature,row.mint).run();row.usd_micros=usd;}}
- if(rows.results.length&&rows.results.every(r=>r.usd_micros!==null)){const usd=rows.results.reduce((s,r)=>s+r.usd_micros!,0);if(!Number.isSafeInteger(usd))throw new Error("Claim value is out of range.");await database().prepare("INSERT OR IGNORE INTO fee_receipts(signature,agent_id,recipient,usd_micros,compute_micros,verified_at) VALUES(?,?,?,?,?,?)").bind(op.signature,op.agent_id,context.wallet,usd,Math.floor(usd*.05),Date.now()).run();}
+ if(rows.results.length&&rows.results.every(r=>r.usd_micros!==null)){const usd=rows.results.reduce((s,r)=>s+r.usd_micros!,0);if(!Number.isSafeInteger(usd))throw new Error("Claim value is out of range.");let compute=0;
+  for(const row of rows.results){const entry=await database().prepare("SELECT amount FROM asset_entries WHERE id=? AND bucket='compute'").bind(`${op.signature}:${row.mint}:compute`).first<{amount:string}>();if(entry)compute+=Number(BigInt(row.usd_micros!)*BigInt(entry.amount)/BigInt(row.amount));}
+  await database().prepare("INSERT OR IGNORE INTO fee_receipts(signature,agent_id,recipient,usd_micros,compute_micros,verified_at) VALUES(?,?,?,?,?,?)").bind(op.signature,op.agent_id,context.wallet,usd,compute,Date.now()).run();}
 }
 export async function claimFees(mint:string){
  const state=await livePool(mint),agent=state.launch.agent_id,signer=await agentSigner(agent),db=database();

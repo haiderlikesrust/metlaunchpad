@@ -11,6 +11,7 @@ import {runAgent,type AgentRow} from "@/lib/agent-runner";
 
 function pathOf(r:Request){return new URL(r.url).pathname.replace(/^\/api\//,"");}
 export async function GET(request:Request){try{const path=pathOf(request);const url=new URL(request.url);
+ if(/^token\/[^/]+\/agent-console$/.test(path)){const {agentConsole}=await import("@/lib/agent-console");return Response.json(await agentConsole(path.split('/')[1]),{headers:{"Cache-Control":"no-store"}});}
  if(path==="brand"){const value=config("THICC_TOKEN_MINT").trim();let mint:string|null=null;try{if(value)mint=pubkey(value).toBase58();}catch{}return Response.json({thiccMint:mint},{headers:{"Cache-Control":"no-store"}});}
  if(/^metadata\/[a-zA-Z0-9-]+(?:\/image)?$/.test(path)){const {launchMetadata}=await import("@/lib/launch-executor");return launchMetadata(path.split("/")[1],path.endsWith("/image"));}
  if(path==="agent-analytics"){const {agentAnalytics}=await import("@/lib/agent-analytics");return Response.json(await agentAnalytics(url.searchParams.get("window")||"24h"),{headers:{"Cache-Control":"no-store"}});}

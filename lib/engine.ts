@@ -2,14 +2,14 @@
 export type Market = { price: number; volatility: number; buyShare: number; depthUsd: number; ageSeconds: number; priceMovePct: number };
 export type Policy = { reservePct: number; maxRebalancePct: number; maxSlippageBps: number; compoundPct: number; computePct: number; cooldownSeconds: number };
 export type Proposal = { action: "hold" | "tighten" | "widen"; rangePct: number; rebalancePct: number; slippageBps: number; reservePct: number; reason: string };
-export const DEFAULT_POLICY: Policy = { reservePct: 20, maxRebalancePct: 15, maxSlippageBps: 50, compoundPct: 60, computePct: 5, cooldownSeconds: 300 };
+export const DEFAULT_POLICY: Policy = { reservePct: 20, maxRebalancePct: 15, maxSlippageBps: 50, compoundPct: 55, computePct: 10, cooldownSeconds: 300 };
 export function validatePolicy(p: Policy): string[] {
  const errors: string[] = [];
- if (!Object.values(p).every(Number.isFinite)) return ["All policy values must be finite numbers."];
+ if (![p.reservePct,p.maxRebalancePct,p.maxSlippageBps,p.compoundPct,p.computePct,p.cooldownSeconds].every(Number.isFinite)) return ["All policy values must be finite numbers."];
  if (p.reservePct < 20 || p.reservePct > 80) errors.push("Reserve must be between 20% and 80%.");
  if (p.maxRebalancePct <= 0 || p.maxRebalancePct > 15) errors.push("A rebalance may move at most 15% of liquidity.");
  if (p.maxSlippageBps <= 0 || p.maxSlippageBps > 50) errors.push("Slippage is capped at 50 bps.");
- if (p.compoundPct !== 60 || p.computePct !== 5) errors.push("Fee allocation is fixed: 60% compounding, 5% compute, 25% reserves, 10% THICC buyback and burn.");
+ if (p.compoundPct<0||p.computePct<0||p.compoundPct+p.computePct>70) errors.push("Compute and compounding must preserve 20% reserves and 10% buyback.");
  if (p.cooldownSeconds < 300) errors.push("Rebalances require a five-minute cooldown.");
  return errors;
 }
