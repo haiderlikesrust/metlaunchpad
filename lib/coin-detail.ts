@@ -5,6 +5,7 @@ import {solPrice} from "./sol-price";
 import {SOL_MINT} from "./launch-economics";
 import {curveProgress,EMPTY_COIN,type CoinDetail} from "./coin-types";
 import {nativeAgentState} from "./native-agent";
+import {nativeLaunchFeeBps} from "./launch-fee";
 async function readCoinDetail(mint:string):Promise<CoinDetail>{
  pubkey(mint);
  const r=await database().prepare("SELECT * FROM launches WHERE mint=? AND verified_at IS NOT NULL LIMIT 1").bind(mint).first<{name:string;symbol:string;mint:string;pool_address:string;pool_kind:string;description:string|null;image_url:string|null;socials_json:string|null;model:string|null;quote_mint:string|null}>();
@@ -21,6 +22,7 @@ async function readCoinDetail(mint:string):Promise<CoinDetail>{
   const sol=await solPrice();detail.graduationUsd=250*sol.solPrice;
   if(r.pool_kind==="dbc"){
    const {livePool}=await import("./pool-state"),{assetPrice}=await import("./asset-price");const state=await livePool(mint),quote=await assetPrice(state.launch.quote_mint);
+   detail.initialFeeBps=nativeLaunchFeeBps(state.curve);
    const progress=curveProgress(BigInt(state.pool.poolState.quoteReserve.toString()),BigInt(state.curve.migrationQuoteThreshold.toString()),!!state.graduated);
    detail.poolAddress=state.graduated||state.launch.pool_address;detail.bondingPct=progress.percent;detail.status=progress.status;detail.quoteMint=state.launch.quote_mint;detail.quoteSymbol=detail.quoteMint===SOL_MINT?"SOL":"Quote";
    detail.priceUsd=state.priceQuote*quote.usdPrice;detail.marketCapUsd=1_000_000_000*detail.priceUsd;detail.graduationUsd=state.launch.graduation_quote*quote.usdPrice;

@@ -1,5 +1,5 @@
 /** Creator inputs cannot override these values. Market caps use the full fixed supply. */
-export const LAUNCH_ECONOMICS=Object.freeze({supply:1_000_000_000,decimals:9,initialMarketCapSol:20,graduationMarketCapSol:250,initialFeeBps:150});
+export const LAUNCH_ECONOMICS=Object.freeze({supply:1_000_000_000,decimals:9,initialMarketCapSol:20,graduationMarketCapSol:250,initialFeeBps:200});
 export const FIXED_SUPPLY_ATOMS=1_000_000_000_000_000_000n;
 export const SOL_MINT="So11111111111111111111111111111111111111112";
 export type SolPrice={solPrice:number;asOfTimestamp:number;stale:boolean};

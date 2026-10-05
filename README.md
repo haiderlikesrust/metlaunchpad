@@ -41,7 +41,7 @@ It does not submit blockchain transactions or call funded model accounts.
 - Initial valuation: 20 SOL market cap; graduation target: 250 SOL market cap.
 - UI valuations are USD first; SOL is the default quote token.
 - A coin's website defaults to `https://thicc.money/token/<mint>` unless the creator supplies another website.
-- Initial swap fee: 1.5%; agent activation: $20 in verified claimed fees.
+- Initial swap fee: 2% for new launches (earlier coins retain 1.5%); agent activation: $20 in verified claimed fees.
 - Earned-fee split: 60% compounding, 5% compute, 25% reserves,
   **10% main THICC buyback and burn**.
 - The buyback reservation is claim-triggered and independent of the AI model.
@@ -79,7 +79,7 @@ See the deployment guide for the live acceptance sequence.
 The original graduated DAMM v2 position is permanently locked. Range management
 applies to additional DLMM liquidity built from earned fees. Model-directed fee
 changes are not available for the configured native fee structures; the initial
-fee is 1.5%. The normal-pool comparison holds observed native-position activity
+fee is 2% for new launches. Earlier coins and existing prepared drafts retain 1.5%. The normal-pool comparison holds observed native-position activity
 constant; it is not a full independent counterfactual replay. Unknown metrics
 remain unavailable.
 

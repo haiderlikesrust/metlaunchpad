@@ -111,7 +111,7 @@ not submitted a funded chain transaction. After deploying this commit:
    of usage history. Pending funding blocks duplicate automatic deposits.
 
 The original native LP is permanently locked; the server key remains a custody
-trust boundary. The configured pools retain their 1.5% fee structure, with no
+trust boundary. New launches use 2%; earlier coins and prepared drafts retain 1.5%, with no
 model-controlled fee-edit path. Analytics compare observed native-position fee
 income with additional DLMM activity and measured costs, not a hypothetical
 full-market simulation. Account rent and impermanent loss are excluded from net

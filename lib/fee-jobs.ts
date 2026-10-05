@@ -8,9 +8,10 @@ import {buildEarnedSwap} from "./jupiter-swap";
 import {mintInfo} from "./pool-state";
 import {SOL_MINT} from "./launch-economics";
 import {gasBudget} from "./gas-budget";
+import {transactionAccountKeys} from './transaction-accounts';
 
 export function receivedTokens(op:Operation){
- if(op.status!=="finalized"||!op.result_json)throw new Error("Finalized swap receipt required.");const tx=JSON.parse(op.result_json) as VersionedTransactionResponse,c=JSON.parse(op.context_json),keys=[...tx.transaction.message.staticAccountKeys,...(tx.meta?.loadedAddresses?.writable||[]),...(tx.meta?.loadedAddresses?.readonly||[])].map(String),index=keys.indexOf(c.outputAta);
+ if(op.status!=="finalized"||!op.result_json)throw new Error("Finalized swap receipt required.");const tx=JSON.parse(op.result_json) as VersionedTransactionResponse,c=JSON.parse(op.context_json),keys=transactionAccountKeys(tx),index=keys.indexOf(c.outputAta);
  const pre=tx.meta?.preTokenBalances?.find(b=>b.accountIndex===index),post=tx.meta?.postTokenBalances?.find(b=>b.accountIndex===index);if(!post||post.mint!==c.outputMint)throw new Error("Swap output account was not credited.");const amount=BigInt(post.uiTokenAmount.amount)-BigInt(pre?.uiTokenAmount.amount||"0");if(amount<BigInt(c.minimumOut))throw new Error("Swap output below minimum.");return amount;
 }
 async function setStatus(id:string,status:string,amount?:bigint){await database().prepare("UPDATE execution_jobs SET status=?,output_amount=COALESCE(?,output_amount),updated_at=? WHERE id=?").bind(status,amount?.toString()??null,Date.now(),id).run();}

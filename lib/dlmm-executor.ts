@@ -14,6 +14,7 @@ import type {Proposal} from "./engine";
 import {gasBudget} from "./gas-budget";
 import {tokenDelta} from "./token-deltas";
 import {SOL_MINT} from "./launch-economics";
+import {nativeLaunchFeeBps} from "./launch-fee";
 function jobShape(id:string,agent:string):ExecutionJob{return {id,agent_id:agent,kind:"dlmm",status:"reserved",input_mint:"",input_amount:"0",output_mint:null,output_amount:null,context_json:"{}",created_at:Date.now()};}
 async function ownedPool(agent:string,address:string,mint:string,quote:string){const signer=await agentSigner(agent),pool=await DLMM.create(rpc(),pubkey(address));if(pool.tokenX.publicKey.toBase58()!==mint||pool.tokenY.publicKey.toBase58()!==quote||!pool.lbPair.creator.equals(signer.publicKey))throw new Error("Companion pool binding mismatch.");return {pool,signer};}
 export async function ensureCompanion(mint:string){
@@ -22,7 +23,7 @@ export async function ensureCompanion(mint:string){
  if(!await rpc().getAccountInfo(address)){
   // Initial setup uses only the agent's gas balance. Principal stays permanently locked in DAMM.
   if(await gasBudget(agent)<100_000_000n)throw new HttpError(409,"Accumulating earned reserves for companion-pool account rent.");
-  const op=await stageOperation(jobShape(`companion:${agent}`,agent),"create",async()=>({tx:await DLMM.createCustomizablePermissionlessLbPair2(rpc(),new BN(100),pubkey(mint),pubkey(state.launch.quote_mint),new BN(DLMM.getBinIdFromPrice(state.priceQuote*10**(state.launch.quote_decimals-9),100,false)),new BN(150),ActivationType.Timestamp,false,signer.publicKey),signers:[signer],context:{mint,quote:state.launch.quote_mint,pool:address.toBase58()}}));if(op.status!=="finalized")return null;
+  const op=await stageOperation(jobShape(`companion:${agent}`,agent),"create",async()=>({tx:await DLMM.createCustomizablePermissionlessLbPair2(rpc(),new BN(100),pubkey(mint),pubkey(state.launch.quote_mint),new BN(DLMM.getBinIdFromPrice(state.priceQuote*10**(state.launch.quote_decimals-9),100,false)),new BN(nativeLaunchFeeBps(state.curve)),ActivationType.Timestamp,false,signer.publicKey),signers:[signer],context:{mint,quote:state.launch.quote_mint,pool:address.toBase58()}}));if(op.status!=="finalized")return null;
  }
  await ownedPool(agent,address.toBase58(),mint,state.launch.quote_mint);await database().prepare("UPDATE agent_custody SET dlmm_pool=? WHERE agent_id=?").bind(address.toBase58(),agent).run();return address.toBase58();
 }

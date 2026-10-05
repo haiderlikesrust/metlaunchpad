@@ -8,6 +8,21 @@ import {swapAmounts} from './swap-event';
 import {activationProgress} from './fee-types';
 import {chartTrades,type ChartSwap} from './chart-trades';
 import {liveCache} from './live-cache';
+import {transactionAccountKeys} from './transaction-accounts';
+test('finalized legacy DBC claim survives JSON storage and counts the exact fee event',()=>{
+ const tx=JSON.parse(readFileSync(new URL('./fixtures/dbc-legacy-claim.json',import.meta.url),'utf8')) as VersionedTransactionResponse;
+ assert.equal(tx.version,'legacy');assert.equal(tx.transaction.message.staticAccountKeys,undefined);
+ assert.equal(transactionAccountKeys(tx)[0],'8ci26pPM1kzNDwRDrhFPKo45FauVt19is2UNJkgUve8h');
+ const events=chainEvents(tx);assert.equal(events.length,1);assert.equal(events[0].name,'evtClaimTradingFee');
+ assert.equal(events[0].data.pool.toString(),'EzJDWosWjvABsiDkYcFLR6P33FEj9rg3YGfDsyp3kw8F');
+ assert.equal(events[0].data.tokenBaseAmount.toString(),'0');assert.equal(events[0].data.tokenQuoteAmount.toString(),'147017046');
+ assert.deepEqual(chainEvents({...tx,meta:{...tx.meta!,err:{InstructionError:[0,'InvalidAccountData']}}}),[]);
+});
+test('stored v0 transactions preserve lookup-table account index ordering',()=>{
+ const tx={transaction:{message:{staticAccountKeys:['payer','program']}},meta:{loadedAddresses:{writable:['vault'],readonly:['mint']}}} as unknown as VersionedTransactionResponse;
+ assert.deepEqual(transactionAccountKeys(tx),['payer','program','vault','mint']);
+ assert.throws(()=>transactionAccountKeys({transaction:{message:{}}} as VersionedTransactionResponse),/keys are unavailable/);
+});
 test('actual finalized version 1 DBC trade emits two compatibility events but counts once',()=>{
  const tx=JSON.parse(readFileSync(new URL('./fixtures/dbc-v1-swap.json',import.meta.url),'utf8')) as VersionedTransactionResponse;
  assert.equal(tx.version,1);assert.deepEqual(chainEvents(tx).filter(e=>e.name.startsWith('evtSwap')).map(e=>e.name),['evtSwap','evtSwap2']);
