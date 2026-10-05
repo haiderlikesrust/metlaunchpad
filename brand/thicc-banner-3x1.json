@@ -1,0 +1,9 @@
+{
+  "mode": "builtin",
+  "aspectRatio": "3:1",
+  "width": 2172,
+  "height": 724,
+  "reference": "public/thicc-logo-square.png",
+  "output": "public/thicc-banner-3x1.png",
+  "prompt": "Create a polished THICC brand banner for an X/Twitter profile, an exactly 3:1 panoramic image (3000 by 1000 pixels). Use the supplied image as the exact brand reference: warm ivory background, vivid orange flowing triple-wave symbol, and distinctive heavy rounded black lowercase thicc lettering. Preserve the identity and spelling. Art direction: a beautifully restrained, bold graphic brand header on a flat warm ivory #F5F5ED background. Place the THICC horizontal logo lockup (orange triple waves beside black thicc wordmark) prominently in the center-right, with the small clean black tagline 'A deeper kind of liquidity.' below. On the far right edge introduce an oversized cropped orange flowing wave motif with smooth round curves, subtle and intentional, not crowding the logo or copy. The left third should be mostly calm negative space, especially the lower-left area that will be covered by a profile avatar. Keep all essential logo and text safely within the central vertical area with generous margins. Orange #FF6428, ink #191B16, warm ivory only. Crisp flat vector-like contours, excellent typography, premium modern financial technology brand, no gradients, no shadows, no texture, no borders. Do not include an avatar, social interface, mockup, charts, coins, robots, extra lettering, badges, or watermarks. Deliver the banner artwork itself, exact 3:1 aspect ratio."
+}
