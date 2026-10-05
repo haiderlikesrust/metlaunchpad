@@ -13,7 +13,7 @@ async function readFees(mint:string):Promise<AgentFees>{
  const [claims,entries,jobs,activation,schedule,last,identity]=await Promise.all([
   db.prepare('SELECT mint,amount FROM asset_claims WHERE agent_id=?').bind(agent).all<{mint:string;amount:string}>(),
   db.prepare("SELECT mint,amount FROM asset_entries WHERE agent_id=? AND bucket NOT IN ('burn','recycle')").bind(agent).all<{mint:string;amount:string}>(),
-  db.prepare("SELECT * FROM execution_jobs WHERE agent_id=? AND status!='complete'").bind(agent).all<ExecutionJob>(),
+  db.prepare("SELECT * FROM execution_jobs WHERE agent_id=? AND status NOT IN ('complete','cancelled')").bind(agent).all<ExecutionJob>(),
   db.prepare('SELECT COALESCE(SUM(usd_micros),0) amount FROM fee_receipts WHERE agent_id=?').bind(agent).first<{amount:number}>(),
   db.prepare('SELECT * FROM fee_collection_state WHERE agent_id=?').bind(agent).first<{last_checked_at:number|null;next_check_at:number;status:string;last_error:string|null}>(),
   db.prepare("SELECT signature,created_at,status FROM chain_operations WHERE agent_id=? AND purpose='claim' ORDER BY created_at DESC LIMIT 1").bind(agent).first<{signature:string|null;created_at:number;status:string}>(),

@@ -15,6 +15,7 @@ import {graduatePool} from "./migration-executor";
 import {reconcileModelUsage} from "./openrouter";
 async function busy(agent:string){return !!await database().prepare("SELECT id FROM chain_operations WHERE agent_id=? AND status IN ('prepared','submitted') LIMIT 1").bind(agent).first();}
 export async function workerCycle(){return withLock("worker",async()=>{
+ if(config("EXECUTION_PAUSED")==="true")return {results:[],funding:{action:"hold"},buybacks:{status:"paused"},paused:true};
  const db=database(),started=Date.now(),results:unknown[]=[];
  const pending=await db.prepare("SELECT * FROM chain_operations WHERE status='submitted' OR (status='prepared' AND agent_id IS NOT NULL) ORDER BY updated_at LIMIT 20").all<Operation>();
  for(const op of pending.results){try{const result=op.status==='prepared'?await submitOperation(op.id,op.wire):await reconcileOperation(op);if(result.purpose==="claim")await ingestClaim(result);}catch{/* The journal preserves the exact wire across outages. */}}
@@ -38,12 +39,12 @@ export async function workerCycle(){return withLock("worker",async()=>{
    if(await busy(agent.id)){results.push({id:agent.id,status:"confirming"});return;}
    await queueGas(agent.id,market?.bootstrap);
    // Acquired assets finish their workflow before another swap can touch them.
-   const job=work.job=await db.prepare("SELECT * FROM execution_jobs WHERE agent_id=? AND status!='complete' AND (status!='reserved' OR retry_at<=?) ORDER BY CASE WHEN status!='reserved' THEN 0 WHEN kind='gas' THEN 1 WHEN kind='compute' THEN 2 WHEN kind='buyback' THEN 3 ELSE 4 END,created_at LIMIT 1").bind(agent.id,Date.now()).first<ExecutionJob>();
+   const job=work.job=await db.prepare("SELECT * FROM execution_jobs WHERE agent_id=? AND status NOT IN ('complete','cancelled') AND (status!='reserved' OR retry_at<=?) ORDER BY CASE WHEN status!='reserved' THEN 0 WHEN kind='gas' THEN 1 WHEN kind='compute' THEN 2 WHEN kind='buyback' THEN 3 ELSE 4 END,created_at LIMIT 1").bind(agent.id,Date.now()).first<ExecutionJob>();
    if(job){
     if((job.retry_at||0)>Date.now()){results.push({id:agent.id,status:"retry_wait"});return;}
     if(job.kind.startsWith("dlmm_"))await executeLiquidityJob(job);else await executeFeeJob(job);
    }else{
-    const queued=await db.prepare("SELECT id FROM execution_jobs WHERE agent_id=? AND status!='complete' LIMIT 1").bind(agent.id).first();
+    const queued=await db.prepare("SELECT id FROM execution_jobs WHERE agent_id=? AND status NOT IN ('complete','cancelled') LIMIT 1").bind(agent.id).first();
     if(!await busy(agent.id)&&!queued){await graduatePool(agent.base_mint);}
    }
    });

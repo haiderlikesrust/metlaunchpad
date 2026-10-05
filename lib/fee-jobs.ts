@@ -49,9 +49,9 @@ export async function executeFeeJob(job:ExecutionJob){
 }
 export async function queueBuybacks(){
  const mint=config("THICC_TOKEN_MINT");if(!mint)return {status:"awaiting_configuration"};pubkey(mint);
- const assets=await database().prepare("SELECT DISTINCT agent_id,mint FROM asset_entries WHERE bucket='buyback'").all<{agent_id:string;mint:string}>();
+ const assets=await database().prepare("SELECT DISTINCT e.agent_id,e.mint FROM asset_entries e JOIN agents a ON a.id=e.agent_id WHERE e.bucket='buyback' AND a.status='active'").all<{agent_id:string;mint:string}>();
  for(const a of assets.results){const amount=await assetBalance(a.agent_id,a.mint,"buyback");if(amount<=0n)continue;
-  const pending=await database().prepare("SELECT * FROM execution_jobs WHERE agent_id=? AND kind='buyback' AND input_mint=? AND status!='complete' ORDER BY created_at LIMIT 1").bind(a.agent_id,a.mint).first<ExecutionJob>();
+  const pending=await database().prepare("SELECT * FROM execution_jobs WHERE agent_id=? AND kind='buyback' AND input_mint=? AND status NOT IN ('complete','cancelled') ORDER BY created_at LIMIT 1").bind(a.agent_id,a.mint).first<ExecutionJob>();
   if(pending){
    // Combine dust only before a wire has ever been signed. Never change an in-flight purchase.
    const signed=await database().prepare("SELECT id FROM chain_operations WHERE agent_id=? AND substr(purpose,1,?)=? LIMIT 1").bind(a.agent_id,pending.id.length+1,`${pending.id}:`).first();
@@ -66,7 +66,7 @@ export async function queueGas(agent:string,needsSetup=false){
  const signer=await agentSigner(agent),balance=Number(await gasBudget(agent)),custody=await database().prepare("SELECT graduated_pool,dlmm_pool FROM agent_custody WHERE agent_id=?").bind(agent).first<{graduated_pool:string|null;dlmm_pool:string|null}>();
  const bootstrapping=needsSetup||(!!custody?.graduated_pool&&!custody.dlmm_pool),desiredSol=bootstrapping?.15:.02;
  if(balance>=(bootstrapping?100_000_000:5_000_000))return;
- if(await database().prepare("SELECT id FROM execution_jobs WHERE agent_id=? AND kind='gas' AND status!='complete' LIMIT 1").bind(agent).first())return;
+ if(await database().prepare("SELECT id FROM execution_jobs WHERE agent_id=? AND kind='gas' AND status NOT IN ('complete','cancelled') LIMIT 1").bind(agent).first())return;
  const assets=await database().prepare("SELECT DISTINCT mint FROM asset_entries WHERE agent_id=? AND bucket='reserve'").bind(agent).all<{mint:string}>();
  const {assetPrice}=await import("./asset-price"),sol=await assetPrice(SOL_MINT);
  for(const a of assets.results){const earned=await database().prepare("SELECT amount FROM asset_claims WHERE agent_id=? AND mint=?").bind(agent,a.mint).all<{amount:string}>(),floor=earned.results.reduce((s,r)=>s+BigInt(r.amount),0n)*20n/100n;const available=await assetBalance(agent,a.mint,"reserve")-floor;if(available<=0n)continue;const token=await mintInfo(a.mint),price=await assetPrice(a.mint),target=BigInt(Math.ceil(desiredSol*sol.usdPrice/price.usdPrice*10**token.mint.decimals));const amount=available<target?available:target;await reserveJob(agent,"gas",a.mint,amount,"reserve",SOL_MINT);return;}

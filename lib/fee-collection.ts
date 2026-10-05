@@ -14,7 +14,7 @@ export async function claimCycle(){return withLock('claim-cycle',async()=>{
    const operations=await db.prepare("SELECT * FROM chain_operations WHERE agent_id=? AND status IN ('prepared','submitted')").bind(agent.id).all<Operation>();
    for(const op of operations.results){const r=op.status==='prepared'?await submitOperation(op.id,op.wire):await reconcileOperation(op);if(r.purpose==='claim')await ingestClaim(r);}
    const busy=async()=>!!await db.prepare("SELECT id FROM chain_operations WHERE agent_id=? AND status IN ('prepared','submitted') LIMIT 1").bind(agent.id).first();
-   const acquired=await db.prepare("SELECT id FROM execution_jobs WHERE agent_id=? AND status NOT IN ('complete','reserved') LIMIT 1").bind(agent.id).first();
+   const acquired=await db.prepare("SELECT id FROM execution_jobs WHERE agent_id=? AND status NOT IN ('complete','reserved','cancelled') LIMIT 1").bind(agent.id).first();
    if(await busy()||acquired){await db.prepare("UPDATE fee_collection_state SET status='confirming' WHERE agent_id=?").bind(agent.id).run();return;}
    await claimFees(agent.base_mint);
    if(!await busy())await claimCompanionFees(agent.base_mint);

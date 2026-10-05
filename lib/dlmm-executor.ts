@@ -56,7 +56,7 @@ export async function executeLiquidityJob(job:ExecutionJob){
 }
 export async function manageLiquidity(mint:string,proposal:Proposal){
  const state=await livePool(mint),agent=state.launch.agent_id,db=database();if(!state.graduated)return {status:"observing",reason:"The native bonding curve controls launch liquidity until graduation."};
- const pending=await db.prepare("SELECT id FROM execution_jobs WHERE agent_id=? AND kind IN ('dlmm_add','dlmm_remove','compound_swap') AND status!='complete' LIMIT 1").bind(agent).first();if(pending)return {status:"executing",reason:"A prior liquidity operation is being reconciled."};
+ const pending=await db.prepare("SELECT id FROM execution_jobs WHERE agent_id=? AND kind IN ('dlmm_add','dlmm_remove','compound_swap') AND status NOT IN ('complete','cancelled') LIMIT 1").bind(agent).first();if(pending)return {status:"executing",reason:"A prior liquidity operation is being reconciled."};
  const earnedX=await assetBalance(agent,mint,"compound"),earnedY=await assetBalance(agent,state.launch.quote_mint,"compound"),recycledX=await assetBalance(agent,mint,"recycle"),recycledY=await assetBalance(agent,state.launch.quote_mint,"recycle"),baseBalance=earnedX+recycledX,quoteBalance=earnedY+recycledY,quotePrice=await assetPrice(state.launch.quote_mint),value=(Number(baseBalance)/1e9*state.priceQuote+Number(quoteBalance)/10**state.launch.quote_decimals)*quotePrice.usdPrice;
  if(value<10&&!state.launch.dlmm_pool)return {status:"observing",reason:"Accumulating earned fees for initial DLMM liquidity."};
  const address=state.launch.dlmm_pool||await ensureCompanion(mint);if(!address)return {status:"executing",reason:"Creating the companion DLMM pool."};
