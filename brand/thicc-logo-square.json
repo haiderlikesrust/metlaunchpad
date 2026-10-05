@@ -1,0 +1,6 @@
+{
+  "tool": "Built-in image_gen",
+  "source": "public/thicc-logo.png",
+  "output": "public/thicc-logo-square.png",
+  "prompt": "Use case: precise-object-edit. Asset: square 1:1 THICC brand logo, 1024x1024 pixels. Edit the supplied THICC logo into a polished square social-avatar version. Preserve its exact identity: the three thick rounded orange flowing horizontal wave shapes and the distinctive heavy, soft, rounded lowercase black wordmark spelled exactly 'thicc'. For the square composition, place the existing orange wave symbol centered above the wordmark, with a small tasteful gap. The complete stacked logo should fill roughly 68% of the canvas width, balanced optically at the center, with generous equal surrounding breathing room. Use one perfectly plain solid warm ivory background, color #F5F5ED, edge to edge. Preserve the reference letter shapes; no redesigned letters, no extra letters, no tagline or beta badge. Crisp smooth edges, flat brand artwork, rich orange #FF6428 and near-black #191B16. No shadows, gradients, texture, borders, frames, scenery or mockup. Opaque background, genuinely square final image."
+}
