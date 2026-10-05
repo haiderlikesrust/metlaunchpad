@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import {DatabaseSync} from 'node:sqlite';
 import {Keypair,SystemProgram,Transaction} from '@solana/web3.js';
 import bs58 from 'bs58';
-import {REQUEST,quoteAmount,allocate,journal,saveRecovery,finish,settle} from './recover-test-fees.mjs';
+import {REQUEST,quoteAmount,allocate,journal,saveRecovery,finish,settle,reconcileEarlier} from './recover-test-fees.mjs';
 
 const SOL='So11111111111111111111111111111111111111112';
 function fixture(){
@@ -14,6 +14,7 @@ function fixture(){
  CREATE TABLE execution_jobs(id TEXT PRIMARY KEY,agent_id TEXT,kind TEXT,status TEXT,input_mint TEXT,input_amount TEXT,context_json TEXT,last_error TEXT,updated_at INTEGER);
  CREATE TABLE funding(id TEXT PRIMARY KEY,status TEXT);
  CREATE TABLE compute_budget_grants(id TEXT PRIMARY KEY,agent_id TEXT,usd_micros INTEGER,created_at INTEGER);
+ CREATE TABLE chain_operations(id TEXT PRIMARY KEY,agent_id TEXT,purpose TEXT,status TEXT,wire TEXT,signature TEXT,last_valid_height INTEGER,result_json TEXT,error TEXT,created_at INTEGER,updated_at INTEGER);
  INSERT INTO agents VALUES('agent','active',0);
  INSERT INTO asset_entries VALUES('earned','agent','${SOL}','compound','6000000000',NULL,0);
  `);journal(db);return db;
@@ -29,6 +30,28 @@ test('recovery pins requested destination and USD amount and rejects stale price
  assert.throws(()=>quoteAmount({solPrice:NaN,stale:false,asOfTimestamp:100000},100000));
  assert.throws(()=>allocate(5n,new Map([['compound',4n],['recycle',100n],['burn',100n]])));
  assert.deepEqual(allocate(5n,new Map([['compound',3n],['compute',4n]])),[{bucket:'compound',amount:'3'},{bucket:'compute',amount:'2'}]);
+});
+test('paused reconciliation observes final success/failure without broadcasting or touching fee allocations',async()=>{
+ for(const failed of [false,true]){const db=fixture();try{
+  db.prepare('INSERT INTO chain_operations VALUES(?,?,?,?,?,?,?,?,?,?,?)').run('pending','agent','claim','submitted','unused','signature',10,null,null,0,0);
+  const rpc={getSignatureStatuses:async()=>({value:[{confirmationStatus:'finalized'}]}),getTransaction:async()=>({meta:{err:failed?{InstructionError:[0,'error']}:null}})};
+  const result=await reconcileEarlier(db,agent,rpc);assert.equal(result.broadcasts,0);assert.equal(result.unresolved,0);assert.equal(result.results[0].status,failed?'failed':'finalized');assert.equal(balance(db),6000000000n);assert.equal(db.prepare('SELECT status FROM agents').get().status,'active');
+  assert.equal((await reconcileEarlier(db,agent,{})).results.length,0);
+ }finally{db.close();}}
+});
+test('paused reconciliation keeps unknown or not-yet-finalized transactions pending',async()=>{
+ for(const value of [null,{confirmationStatus:'confirmed'},{confirmationStatus:'finalized'}]){const db=fixture();try{
+  db.prepare('INSERT INTO chain_operations VALUES(?,?,?,?,?,?,?,?,?,?,?)').run('pending','agent','claim','submitted','unused','signature',10,null,null,0,0);
+  const rpc={getSignatureStatuses:async()=>({value:[value]}),getBlockHeight:async()=>5,getTransaction:async()=>null};
+  const result=await reconcileEarlier(db,agent,rpc);assert.equal(result.unresolved,1);assert.equal(db.prepare('SELECT status FROM chain_operations').get().status,'submitted');
+ }finally{db.close();}}
+});
+test('paused reconciliation requires expired finalized height AND a second absent history check',async()=>{
+ for(const appears of [false,true]){const db=fixture();try{
+  db.prepare('INSERT INTO chain_operations VALUES(?,?,?,?,?,?,?,?,?,?,?)').run('pending','agent','claim','submitted','unused','signature',10,null,null,0,0);let reads=0;
+  const rpc={getSignatureStatuses:async()=>({value:[++reads===2&&appears?{confirmationStatus:'confirmed'}:null]}),getBlockHeight:async()=>11};
+  const result=await reconcileEarlier(db,agent,rpc);assert.equal(reads,2);assert.equal(result.results[0].status,appears?'submitted':'expired');
+ }finally{db.close();}}
 });
 test('recovery reservation is atomic, leaves an audit event, holds the agent and cannot double debit',()=>{
  const db=fixture();try{saveRecovery(db,agent,record,[]);assert.equal(balance(db),1000000000n);assert.equal(db.prepare('SELECT status FROM agents').get().status,'recovery_hold');assert.equal(db.prepare('SELECT COUNT(*) n FROM events').get().n,1);assert.throws(()=>saveRecovery(db,agent,record,[]));assert.equal(balance(db),1000000000n);}finally{db.close();}

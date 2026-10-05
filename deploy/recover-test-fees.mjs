@@ -23,6 +23,33 @@ export function allocate(amount,balances) {
 }
 function atomic(db,fn){db.exec('BEGIN IMMEDIATE');try{const result=fn();db.exec('COMMIT');return result;}catch(e){db.exec('ROLLBACK');throw e;}}
 function event(db,agent,message){db.prepare('INSERT INTO events(id,owner,agent_id,kind,message,created_at) VALUES(?,?,?,?,?,?)').run(randomUUID(),agent.owner,agent.id,'test_fee_recovery',message,Date.now());}
+function backup(db,path,label){const directory=join(dirname(path),'backups');mkdirSync(directory,{recursive:true});db.prepare('VACUUM INTO ?').run(join(directory,`${label}-${Date.now()}-${randomUUID()}.sqlite`));}
+/** Observe existing signatures only. Never sign, submit, retry, or start jobs. */
+export async function reconcileEarlier(db,agent,rpc){
+ const rows=db.prepare("SELECT * FROM chain_operations WHERE agent_id=? AND status IN ('prepared','submitted') ORDER BY created_at").all(agent.id),results=[];
+ for(const row of rows){
+  let signature=row.signature;
+  if(!signature){
+   const tx=VersionedTransaction.deserialize(Buffer.from(row.wire,'base64'));
+   if(!tx.signatures[0]?.some(n=>n!==0)||tx.message.staticAccountKeys[0].toBase58()!==agent.wallet)throw new Error('Earlier operation has no identifiable agent signature. No record was cleared.');
+   signature=bs58.encode(tx.signatures[0]);
+  }
+  let state=(await rpc.getSignatureStatuses([signature],{searchTransactionHistory:true})).value[0];
+  const expired=!state&&await rpc.getBlockHeight('finalized')>row.last_valid_height;
+  if(expired)state=(await rpc.getSignatureStatuses([signature],{searchTransactionHistory:true})).value[0];
+  let next=row.status,receipt=null;
+  if(state?.confirmationStatus==='finalized'){
+   receipt=await rpc.getTransaction(signature,{commitment:'finalized',maxSupportedTransactionVersion:1});
+   if(receipt?.meta)next=receipt.meta.err?'failed':'finalized';
+  }else if(!state&&expired)next='expired';
+  if(next!==row.status)atomic(db,()=>{
+   db.prepare("UPDATE chain_operations SET status=?,signature=?,result_json=COALESCE(?,result_json),error=?,updated_at=? WHERE id=? AND status IN ('prepared','submitted')").run(next,signature,receipt?JSON.stringify(receipt):null,next==='failed'?'Transaction failed on-chain.':next==='expired'?'Blockhash expired without landing.':null,Date.now(),row.id);
+   event(db,agent,`Recovery check: earlier ${row.purpose==='claim'?'fee collection':'agent transaction'} ${next}. No transaction was broadcast.`);
+  });
+  results.push({operation:row.id,purpose:row.purpose,status:next,signature});
+ }
+ return {broadcasts:0,results,unresolved:results.filter(r=>['prepared','submitted'].includes(r.status)).length};
+}
 export function journal(db){db.exec(`CREATE TABLE IF NOT EXISTS operator_recoveries(id TEXT PRIMARY KEY,agent_id TEXT NOT NULL,destination TEXT NOT NULL,amount TEXT NOT NULL,price REAL NOT NULL,wire TEXT NOT NULL,signature TEXT NOT NULL,last_valid_height INTEGER NOT NULL,status TEXT NOT NULL,debits TEXT NOT NULL,created_at INTEGER NOT NULL)`);}
 export function saveRecovery(db,agent,record,cancellations){
  atomic(db,()=>{
@@ -78,22 +105,23 @@ export async function settle(db,agent,row,rpc){
  return 'submitted';
 }
 export async function main(args=process.argv.slice(2)){
- if(args.some(v=>v!=='--send'))throw new Error('Usage: node deploy/recover-test-fees.bundle.cjs [--send]');
- const send=args.includes('--send'),path=process.env.DATABASE_PATH||'/data/thicc.sqlite';
+ if(args.some(v=>!['--send','--reconcile'].includes(v))||(args.includes('--send')&&args.includes('--reconcile')))throw new Error('Usage: node /app/deploy/recover-test-fees.bundle.cjs [--send | --reconcile]');
+ const send=args.includes('--send'),reconcile=args.includes('--reconcile'),write=send||reconcile,path=process.env.DATABASE_PATH||'/data/thicc.sqlite';
  if(!existsSync(path))throw new Error('Production database not found. Run inside the Dokploy web container.');
  if(!process.env.QUICKNODE_RPC_URL)throw new Error('QuickNode RPC is not configured in this container.');
- const db=new DatabaseSync(path,{readOnly:!send});db.exec('PRAGMA busy_timeout=5000');
+ const db=new DatabaseSync(path,{readOnly:!write});db.exec('PRAGMA busy_timeout=5000');
  const rpc=new Connection(process.env.QUICKNODE_RPC_URL,'finalized'),locks=[],token=randomUUID();let heartbeat;
  try{
   const agent=db.prepare('SELECT a.id,a.owner,a.status,a.lease_until,c.wallet,c.encrypted_key FROM agents a JOIN agent_custody c ON c.agent_id=a.id JOIN launches l ON l.mint=c.base_mint AND l.pool_address=a.pool_address WHERE c.base_mint=? AND l.verified_at IS NOT NULL LIMIT 1').get(REQUEST.mint);
   if(!agent)throw new Error('Verified THICC test agent not found.');
   if(agent.wallet===REQUEST.destination)throw new Error('Source equals destination.');
-  if(send){
-   if(process.env.EXECUTION_PAUSED!=='true')throw new Error('Set EXECUTION_PAUSED=true in Dokploy and redeploy web + worker before sending.');
+  if(write){
+   if(process.env.EXECUTION_PAUSED!=='true')throw new Error('Set EXECUTION_PAUSED=true in Dokploy and redeploy web + worker before recovery or reconciliation.');
    if(agent.lease_until>Date.now())throw new Error('An AI cycle is still active. Wait and rerun.');
    atomic(db,()=>{for(const id of ['worker','claim-cycle',`agent:${agent.id}`]){const now=Date.now();const r=db.prepare('INSERT INTO runtime_locks(id,token,expires_at) VALUES(?,?,?) ON CONFLICT(id) DO UPDATE SET token=excluded.token,expires_at=excluded.expires_at WHERE runtime_locks.expires_at<?').run(id,token,now+180000,now);if(!r.changes)throw new Error('Worker is still finishing a cycle. Wait and rerun.');locks.push(id);}});
    heartbeat=setInterval(()=>{for(const id of locks)db.prepare('UPDATE runtime_locks SET expires_at=? WHERE id=? AND token=?').run(Date.now()+180000,id,token);},30000);heartbeat.unref();
   }
+  if(reconcile){backup(db,path,'before-recovery-reconciliation');console.log(JSON.stringify(await reconcileEarlier(db,agent,rpc),null,2));console.log('No funds sent. If unresolved is 0, rerun without flags to preview the recovery.');return;}
   const hasJournal=db.prepare("SELECT name FROM sqlite_master WHERE name='operator_recoveries'").get();
   const existing=hasJournal&&db.prepare('SELECT * FROM operator_recoveries WHERE id=?').get(REQUEST.id);
   if(existing){
@@ -101,7 +129,7 @@ export async function main(args=process.argv.slice(2)){
    const state=send?await settle(db,agent,existing,rpc):existing.status;
    console.log(JSON.stringify({status:state,destination:existing.destination,sol:Number(existing.amount)/1e9,signature:existing.signature,explorer:`https://solscan.io/tx/${existing.signature}`},null,2));return;
   }
-  if(db.prepare("SELECT id FROM chain_operations WHERE agent_id=? AND status IN ('prepared','submitted') LIMIT 1").get(agent.id))throw new Error('An earlier agent transaction is unresolved. Let the worker reconcile it before pausing and recovering.');
+  if(db.prepare("SELECT id FROM chain_operations WHERE agent_id=? AND status IN ('prepared','submitted') LIMIT 1").get(agent.id))throw new Error('An earlier agent transaction is unresolved. Keep execution paused and run: node /app/deploy/recover-test-fees.bundle.cjs --reconcile');
   const jobs=db.prepare("SELECT * FROM execution_jobs WHERE agent_id=? AND status NOT IN ('complete','cancelled')").all(agent.id);
   for(const job of jobs)if(job.status!=='reserved'||job.input_mint!==SOL||!['compute','buyback','gas','compound_swap'].includes(job.kind)||db.prepare('SELECT id FROM chain_operations WHERE agent_id=? AND substr(purpose,1,?)=? LIMIT 1').get(agent.id,job.id.length+1,`${job.id}:`))throw new Error('A pending job already started. Let the worker finish/reconcile it before recovery.');
   const balances=new Map();for(const e of db.prepare('SELECT bucket,amount FROM asset_entries WHERE agent_id=? AND mint=?').all(agent.id,SOL))balances.set(e.bucket,(balances.get(e.bucket)||0n)+BigInt(e.amount));
@@ -130,7 +158,7 @@ export async function main(args=process.argv.slice(2)){
   if(!signer.publicKey.equals(source))throw new Error('Agent signing key does not match the source wallet.');tx.sign(signer);signer.secretKey.fill(0);
   const simulation=await rpc.simulateTransaction(VersionedTransaction.deserialize(tx.serialize()),{sigVerify:true,commitment:'confirmed'});if(simulation.value.err)throw new Error('Recovery simulation failed. No funds sent.');
   quoteAmount(price); // Refuse stale pricing after a slow RPC/simulation.
-  const backupDir=join(dirname(path),'backups');mkdirSync(backupDir,{recursive:true});db.prepare('VACUUM INTO ?').run(join(backupDir,`before-test-recovery-${Date.now()}.sqlite`));
+  backup(db,path,'before-test-recovery');
   journal(db);saveRecovery(db,agent,{amount:amount.toString(),price:price.solPrice,wire:tx.serialize().toString('base64'),signature:bs58.encode(tx.signature),height:latest.lastValidBlockHeight,debits},jobs);
   const row=db.prepare('SELECT * FROM operator_recoveries WHERE id=?').get(REQUEST.id);const status=await settle(db,agent,row,rpc);
   console.log(JSON.stringify({status,signature:row.signature,explorer:`https://solscan.io/tx/${row.signature}`,next:'Rerun the same --send command until finalized. Never change the recovery ID.'},null,2));
